@@ -73,6 +73,38 @@ PROJECTX_API_KEY=your_key
 
 Leave the three URL lines as they are unless Topstep gives you different ones. They point at the public ProjectX gateway (`https://api.topstepx.com`) and the realtime hubs (`https://rtc.topstepx.com/hubs/user` and `.../market`).
 
+## Check the connection (read-only)
+
+Do this before you point the bot at a Combine. The check **cannot place, modify, or cancel orders**. It does not call any `/api/Order/` route. It is safe to run against the 50K Combine you already bought. It does not need a Practice account.
+
+On a Mac, in a terminal opened in this folder:
+
+```bash
+source .venv/bin/activate
+python -m topstepbot check
+```
+
+That listens for MES quotes for about 20 seconds, then disconnects. To skip the quote listen:
+
+```bash
+python -m topstepbot check --no-signalr
+```
+
+What you should see:
+
+1. **Auth.** `PASS  Logged in.` The API key and the session token are never printed. A wrong key prints `FAIL` and an error code, then stops.
+2. **Accounts.** One line per active account: `id`, `name`, `balance`, `canTrade`, and `simulated` exactly as the API sent them (`field absent` if a field is missing). A line `50K Combine: id=... name=...` marks the account whose name looks like a 50K Combine (`50K` plus `TC` or `COMBINE`).
+3. **Contracts.** Every contract returned for `MES`, with id, name, tick size, and tick value, then `Front month the bot would pick`.
+4. **Bars.** The count of 5-minute MES bars from about the last day, the first and last timestamps **in the order they arrived**, and `newest-first` or `oldest-first`.
+5. **SignalR.** How many MES quotes arrived, plus one sample (`lastPrice`, `bestBid`, `bestAsk`). If the handshake fails, that step prints `FAIL` and the error, and the command continues.
+6. A **SUMMARY** with `PASS` or `FAIL` on each step, then `OVERALL PASS` when login, accounts, contracts, and bars all passed. A SignalR failure still prints `OVERALL PASS` when those four passed.
+
+The raw responses, with the key and token replaced by `[REDACTED]`, are written to `logs/check-<timestamp>.json`. That file is how the `TODO-VERIFY` notes get checked against your real account. `logs/` is gitignored.
+
+`account.kind` in `config/settings.yaml` is still `practice`. This check does not change it and does not trade. Your Standard 50K Combine has Topstep's **$1,000** Daily Loss Limit. The bot's own daily stop is still **$400**, inside that limit and inside the **$2,000** maximum loss. Leave both as they are until you decide otherwise.
+
+Do not run `python -m topstepbot practice --arm` as part of this check. Practice mode can send orders. You only have a Combine, so leave practice mode alone until you have read the check output and chosen an account id on purpose.
+
 ## Run a backtest
 
 No account and no API key:
@@ -116,7 +148,9 @@ python -m topstepbot paper --arm --speed 0.2
 
 ## Run on a Topstep Practice account
 
-Do this only while you are sitting at **this** computer. Start with the free Practice account. In TopstepX, confirm the account is Practice (or, later, a Combine or Express Funded account), and turn on **Auto OCO Brackets**.
+Do this only while you are sitting at **this** computer. If you do not have a Practice account, do not run this command. Run the read-only check above instead. Practice mode can send orders to whichever simulated account the config selects.
+
+When you do have a Practice account (or you have finished the checklist and you mean to trade the Combine), confirm the account in TopstepX and turn on **Auto OCO Brackets**.
 
 In `config/settings.yaml`:
 
@@ -182,7 +216,7 @@ Help pages named in the rulebook: TopstepX API Access, Trading Combine parameter
 
 ## What is not verified about the ProjectX API
 
-These pieces follow the public docs at <https://gateway.docs.projectx.com> (TopstepX URLs, read 7 Oct 2026). They have **not** been called from this repo, because that would require your key and could send orders. Where a detail was unclear, it is marked `TODO-VERIFY` in the code and isolated in `topstepbot/broker/projectx.py`. The paper broker and the backtest do not need any of it.
+These pieces follow the public docs at <https://gateway.docs.projectx.com> and the swagger at <https://api.topstepx.com/swagger/index.html> (read 7 Oct 2026). The trading client has not been called from this repo, because that would require your key and could send orders. The read-only check above is the call that records a real response without placing an order. Where a detail is still unconfirmed on a live payload, it is marked `TODO-VERIFY`. The paper broker and the backtest do not need any of it.
 
 Verified from the docs and implemented:
 
@@ -197,12 +231,12 @@ Verified from the docs and implemented:
 Not verified, so treat practice mode as something **you** test on a Practice account before you trust it:
 
 - **TODO-VERIFY:** The Python `signalrcore` handshake against `rtc.topstepx.com` (the docs show JavaScript). If the hub fails, practice mode still polls `retrieveBars`. Polling is the bar source either way.
-- **TODO-VERIFY:** Whether `Account/search` includes `simulated` and `balance`. The REST example shows `id`, `name`, `canTrade`, `isVisible`. The realtime account message also has `simulated` and `balance`. If `simulated` is missing, the bot allows the account only when its **name** matches `account.kind` (practice / combine / express). Otherwise it refuses.
+- **TODO-VERIFY:** Whether the live `Account/search` payload matches swagger. The swagger `TradingAccountModel` requires `id`, `name`, `balance`, `canTrade`, `isVisible`, and `simulated`. An older REST example omitted `simulated` and `balance`. The check prints each field as returned (`field absent` if it is missing) and saves the raw JSON. If `simulated` is missing, the bot allows the account only when its **name** matches `account.kind` (practice / combine / express). Otherwise it refuses.
 - **TODO-VERIFY:** The exact MES contract id. Examples on the site use other products (`F.US.EP`, `F.US.ENQ`, `F.US.MNQ`). The bot keeps an active contract whose name looks like `MES` + a month code, whose symbol id ends in `.MES`, or whose description says Micro E-mini S&P. If that picks the wrong contract, set `instrument.contract_id` yourself.
 - **TODO-VERIFY:** `POST /api/Position/partialCloseContract` (listed in the docs index; the page body was not in the fetch). Version 1 does not need it for the normal "sell half" path. Half and the runner are two separate bracket orders, each with its own stop.
 - **TODO-VERIFY:** Bracket child-order ids. `Order/place` returns the parent id. After a fill, trailing looks for the working stop with `searchOpen`. If it cannot find one, it will not pretend the trail worked.
 - **TODO-VERIFY:** Your real round-turn MES fee. `1.40` is only a starting number from a public trade example.
-- **TODO-VERIFY:** Bar order. The published example is newest-first. The code sorts by time.
+- **TODO-VERIFY:** Bar order. The published example is newest-first. The trading client sorts by time. `python -m topstepbot check` prints the arrival order and stores the raw bars so you can see which one your account gets.
 - **TODO-VERIFY:** What the `live: false` flag means on your Practice data subscription. Leave `broker.projectx_use_live_data` false for Practice and Combine.
 
 If a bracket is rejected because the account is in Position Brackets mode, the docs say the order can still be created. This client cancels that order id. Confirm the cancel on your Practice account the first time you connect.
@@ -215,7 +249,8 @@ If a bracket is rejected because the account is in Position Brackets mode, the d
 | `docs/rulebook.md` | The course rulebook |
 | `topstepbot/strategy/engine.py` | Setup A and Setup B, shared by backtest and live |
 | `topstepbot/broker/paper.py` | Offline fills |
-| `topstepbot/broker/projectx.py` | ProjectX gateway client |
+| `topstepbot/broker/projectx.py` | ProjectX gateway client (can send orders) |
+| `topstepbot/broker/readonly.py` | Read-only client used by `check` |
 | `data/sample_mes_1m_synthetic.csv` | Fake bars so the backtest runs immediately |
 | `tests/` | Unit tests |
 

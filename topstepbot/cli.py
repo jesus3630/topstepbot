@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from topstepbot.backtest.runner import run_backtest
+from topstepbot.check import run_check
 from topstepbot.config import load_config
 from topstepbot.live import run_paper, run_practice
 
@@ -29,6 +30,22 @@ def main(argv: list[str] | None = None) -> int:
     practice = sub.add_parser("practice", help="Trade a Topstep Practice or Combine account through ProjectX")
     practice.add_argument("--arm", action="store_true", help="You are at this PC and you accept responsibility for orders.")
 
+    check = sub.add_parser(
+        "check",
+        help="Read-only ProjectX connection check. Never places, modifies, or cancels orders.",
+    )
+    check.add_argument(
+        "--no-signalr",
+        action="store_true",
+        help="Skip the market-hub quote listen. The REST checks still run.",
+    )
+    check.add_argument(
+        "--signalr-seconds",
+        type=float,
+        default=20,
+        help="How long to listen for MES quotes (default 20).",
+    )
+
     download = sub.add_parser("download-bars", help="Download MES 1-minute bars to a CSV. Requires .env credentials.")
     download.add_argument("--start", required=True, help="ISO date or timestamp, Central time if no timezone")
     download.add_argument("--end", required=True, help="ISO date or timestamp")
@@ -48,6 +65,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "practice":
         run_practice(config, armed=armed)
         return 0
+    if args.command == "check":
+        return run_check(
+            config,
+            skip_signalr=args.no_signalr,
+            signalr_seconds=args.signalr_seconds,
+        )
     if args.command == "download-bars":
         from topstepbot.download import download_bars
 
