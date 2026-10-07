@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 from topstepbot.config import load_config
 from topstepbot.models import Phase
 from topstepbot.news import block_reason
-from topstepbot.session import entries_allowed, must_flatten, phase_at
+from topstepbot.session import cme_equity_index_open, entries_allowed, must_flatten, phase_at
 
 TZ = ZoneInfo("America/Chicago")
 CONFIG = load_config("config/settings.yaml")
@@ -28,7 +28,23 @@ def test_agreed_settings_live_in_the_config_file():
     assert CONFIG.session.entry_end.hour == 10 and CONFIG.session.entry_end.minute == 15
     assert CONFIG.session.flatten_time.hour == 10 and CONFIG.session.flatten_time.minute == 30
     assert CONFIG.runtime.armed is False
+    assert CONFIG.runtime.quote_timeout_seconds == 20
+    assert CONFIG.account.kind == "combine"
+    assert CONFIG.account.account_name_contains == "50KTC"
+    assert CONFIG.instrument.tick_size == 0.25
+    assert CONFIG.instrument.tick_value == 1.25
     assert CONFIG.news.no_trade_today is False
+
+
+def test_cme_equity_index_hours():
+    chicago = ZoneInfo("America/Chicago")
+    assert cme_equity_index_open(datetime(2026, 10, 7, 11, 33, tzinfo=chicago))
+    assert not cme_equity_index_open(datetime(2026, 10, 7, 16, 30, tzinfo=chicago))
+    assert cme_equity_index_open(datetime(2026, 10, 7, 17, 0, tzinfo=chicago))
+    assert not cme_equity_index_open(datetime(2026, 10, 9, 16, 0, tzinfo=chicago))
+    assert not cme_equity_index_open(datetime(2026, 10, 10, 12, 0, tzinfo=chicago))
+    assert not cme_equity_index_open(datetime(2026, 10, 11, 16, 59, tzinfo=chicago))
+    assert cme_equity_index_open(datetime(2026, 10, 11, 17, 0, tzinfo=chicago))
 
 
 def test_session_phases():

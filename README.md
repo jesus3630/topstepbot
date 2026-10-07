@@ -77,10 +77,11 @@ Leave the three URL lines as they are unless Topstep gives you different ones. T
 
 Do this before you point the bot at a Combine. The check **cannot place, modify, or cancel orders**. It does not call any `/api/Order/` route. It is safe to run against the 50K Combine you already bought. It does not need a Practice account.
 
-On a Mac, in a terminal opened in this folder:
+On a Mac, in a terminal opened in this folder. Reinstall once so the new `websockets` package is present (`signalrcore` is no longer used):
 
 ```bash
 source .venv/bin/activate
+python -m pip install -r requirements.txt
 python -m topstepbot check
 ```
 
@@ -96,14 +97,18 @@ What you should see:
 2. **Accounts.** One line per active account: `id`, `name`, `balance`, `canTrade`, and `simulated` exactly as the API sent them (`field absent` if a field is missing). A line `50K Combine: id=... name=...` marks the account whose name looks like a 50K Combine (`50K` plus `TC` or `COMBINE`).
 3. **Contracts.** Every contract returned for `MES`, with id, name, tick size, and tick value, then `Front month the bot would pick`.
 4. **Bars.** The count of 5-minute MES bars from about the last day, the first and last timestamps **in the order they arrived**, and `newest-first` or `oldest-first`.
-5. **SignalR.** How many MES quotes arrived, plus one sample (`lastPrice`, `bestBid`, `bestAsk`). If the handshake fails, that step prints `FAIL` and the error, and the command continues.
-6. A **SUMMARY** with `PASS` or `FAIL` on each step, then `OVERALL PASS` when login, accounts, contracts, and bars all passed. A SignalR failure still prints `OVERALL PASS` when those four passed.
+5. **SignalR.** The hub URL with no token (`wss://rtc.topstepx.com/hubs/market`), how many MES quotes arrived, and one sample (`lastPrice`, `bestBid`, `bestAsk`). While the CME equity-index session is open, **zero quotes is `FAIL`**, and `OVERALL` is `FAIL` too. `WARN` is only when that session is actually closed (the 4:00–5:00 PM CT halt, or the weekend). A handshake error is always `FAIL`.
+6. A **SUMMARY** with `PASS`, `FAIL`, or `WARN` on each step. `OVERALL PASS` means login, accounts, contracts, and bars passed, and the quote step was not `FAIL`.
 
 The raw responses, with the key and token replaced by `[REDACTED]`, are written to `logs/check-<timestamp>.json`. That file is how the `TODO-VERIFY` notes get checked against your real account. `logs/` is gitignored.
 
-`account.kind` in `config/settings.yaml` is still `practice`. This check does not change it and does not trade. Your Standard 50K Combine has Topstep's **$1,000** Daily Loss Limit. The bot's own daily stop is still **$400**, inside that limit and inside the **$2,000** maximum loss. Leave both as they are until you decide otherwise.
+`account.kind` is `combine`, and `account.account_name_contains` is `50KTC`. A live check showed the account `50KTC-…` with `simulated=true` and `canTrade=true`. That account is an allowed target. A Live Funded account (`simulated=false`, or a name containing `LIVE`) is still refused. This check does not trade.
 
-Do not run `python -m topstepbot practice --arm` as part of this check. Practice mode can send orders. You only have a Combine, so leave practice mode alone until you have read the check output and chosen an account id on purpose.
+Your Standard 50K Combine has Topstep's **$1,000** Daily Loss Limit. The bot's own daily stop is still **$400**, inside that limit and inside the **$2,000** maximum loss.
+
+Do not run `python -m topstepbot practice --arm` as part of this check. That command can send orders. It will stay flat unless a live MES quote arrives while the market is open.
+
+Before any armed session, set the Combine's bracket mode to **Auto OCO Brackets** (TopstepX → Settings → Risk Settings). Position Brackets is the platform default. The bot sends `stopLossBracket` and `takeProfitBracket` on each entry. In Position Brackets mode the API rejects those fields with `Brackets cannot be used with Position Brackets. You must enable Auto OCO Brackets.` and still creates the order. Auto OCO Brackets is what attaches the stop and target to the order.
 
 ## Run a backtest
 
@@ -154,7 +159,7 @@ When you do have a Practice account (or you have finished the checklist and you 
 
 In `config/settings.yaml`:
 
-- `account.kind` is `practice` until you intentionally switch it to `combine` or `express`.
+- `account.kind` is `combine` and `account.account_name_contains` is `50KTC`, matching the Combine from the read-only check. Change these only if you mean a different account.
 - `news.no_trade_today` is `false` only on a day you actually want to trade.
 - Put today's date in `blackout_dates` if it is CPI, NFP / jobs, or FOMC. Example: `"2026-03-06"`.
 - Leave `runtime.armed` false. Pass `--arm` on the command instead, so you make the choice that morning.
@@ -230,14 +235,15 @@ Verified from the docs and implemented:
 
 Not verified, so treat practice mode as something **you** test on a Practice account before you trust it:
 
-- **TODO-VERIFY:** The Python `signalrcore` handshake against `rtc.topstepx.com` (the docs show JavaScript). If the hub fails, practice mode still polls `retrieveBars`. Polling is the bar source either way.
-- **TODO-VERIFY:** Whether the live `Account/search` payload matches swagger. The swagger `TradingAccountModel` requires `id`, `name`, `balance`, `canTrade`, `isVisible`, and `simulated`. An older REST example omitted `simulated` and `balance`. The check prints each field as returned (`field absent` if it is missing) and saves the raw JSON. If `simulated` is missing, the bot allows the account only when its **name** matches `account.kind` (practice / combine / express). Otherwise it refuses.
-- **TODO-VERIFY:** The exact MES contract id. Examples on the site use other products (`F.US.EP`, `F.US.ENQ`, `F.US.MNQ`). The bot keeps an active contract whose name looks like `MES` + a month code, whose symbol id ends in `.MES`, or whose description says Micro E-mini S&P. If that picks the wrong contract, set `instrument.contract_id` yourself.
+- **Confirmed 2026-10-07** on this Combine: `Account/search` returned `simulated=true`, `canTrade=true`, and `balance`. The name started with `50KTC`. If a future payload omits `simulated`, the bot still requires the name to match `account.kind`.
+- **Confirmed 2026-10-07:** the active MES contract was `id=CON.F.US.MES.Z26`, `name=MESZ6`, `symbolId=F.US.MES`, `tickSize=0.25`, `tickValue=1.25`. The bot picks the first `activeContract: true` MES match from `Contract/search`.
+- **Confirmed 2026-10-07:** `retrieveBars` returned 5-minute bars newest-first (276 bars). The trading client sorts them oldest-first. `live: false` returned those bars for this Combine.
+- The market hub URL is `wss://rtc.topstepx.com/hubs/market` (the docs write `https`; WebSockets use `wss`, with `skipNegotiation`). Subscribe with `SubscribeContractQuotes`. `signalrcore` 1.0.2 reads the frame header with a 2-byte SSL `recv`, and on Python 3.14 that raises `SSL: BAD_LENGTH` and then delivers no quotes. The bot uses a small SignalR JSON client on the `websockets` package instead. If no quote arrives within `quote_timeout_seconds` (20) while MES is in session, practice mode logs that and stays flat.
 - **TODO-VERIFY:** `POST /api/Position/partialCloseContract` (listed in the docs index; the page body was not in the fetch). Version 1 does not need it for the normal "sell half" path. Half and the runner are two separate bracket orders, each with its own stop.
 - **TODO-VERIFY:** Bracket child-order ids. `Order/place` returns the parent id. After a fill, trailing looks for the working stop with `searchOpen`. If it cannot find one, it will not pretend the trail worked.
 - **TODO-VERIFY:** Your real round-turn MES fee. `1.40` is only a starting number from a public trade example.
-- **TODO-VERIFY:** Bar order. The published example is newest-first. The trading client sorts by time. `python -m topstepbot check` prints the arrival order and stores the raw bars so you can see which one your account gets.
-- **TODO-VERIFY:** What the `live: false` flag means on your Practice data subscription. Leave `broker.projectx_use_live_data` false for Practice and Combine.
+- **TODO-VERIFY:** Whether a later contract roll still uses the same id shape (`CON.F.US.MES.` + month). The 2026-10-07 front month was `CON.F.US.MES.Z26`. Leave `instrument.contract_id` blank unless search picks the wrong one.
+- Leave `broker.projectx_use_live_data` false. That is the flag the 2026-10-07 history call used.
 
 If a bracket is rejected because the account is in Position Brackets mode, the docs say the order can still be created. This client cancels that order id. Confirm the cancel on your Practice account the first time you connect.
 

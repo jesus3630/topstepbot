@@ -68,8 +68,9 @@ class ReadOnlyProjectXClient:
         self.market_hub_url = market_hub_url
         self.http = session or requests.Session()
         self.token: str | None = None
-        # Tests inject a hub factory. Production uses signalrcore.
+        # Tests inject a hub factory. Production uses the JSON SignalR client.
         self._hub_factory: Callable[[ReadOnlyProjectXClient], object] | None = None
+        self._signalr_connector: Callable | None = None
 
     def login(self) -> dict:
         """POST /api/Auth/loginKey. Returns the raw JSON body. Does not log the key or token."""
@@ -131,24 +132,39 @@ class ReadOnlyProjectXClient:
     def connect_quotes(self, contract_id: str, on_quote: Callable[..., None]):
         """Subscribe to GatewayQuote only. Does not subscribe to trades or user orders.
 
-        TODO-VERIFY: the Python signalrcore handshake against rtc.topstepx.com.
-        The docs show a JavaScript client with skipNegotiation.
+        The hub URL is wss://rtc.topstepx.com/hubs/market (https in config is
+        rewritten). The token stays in the query string and is not logged.
         """
         if not self.token:
             raise ProjectXError("not logged in")
-        factory = self._hub_factory or _default_quote_hub
-        hub = factory(self)
-        hub.on("GatewayQuote", lambda *args: on_quote(*args))
+        if self._hub_factory is not None:
+            hub = self._hub_factory(self)
+            hub.on("GatewayQuote", lambda *args: on_quote(*args))
+            try:
+                hub.start()
+                hub.send("SubscribeContractQuotes", [contract_id])
+            except Exception:
+                stop = getattr(hub, "stop", None)
+                if callable(stop):
+                    try:
+                        stop()
+                    except Exception:
+                        pass
+                raise
+            return hub
+        from topstepbot.broker.signalr import JsonSignalRClient
+
+        hub = JsonSignalRClient(
+            self.market_hub_url,
+            self.token,
+            {"GatewayQuote": lambda *args: on_quote(*args)},
+            [("SubscribeContractQuotes", [contract_id])],
+            connector=self._signalr_connector,
+        )
         try:
             hub.start()
-            hub.send("SubscribeContractQuotes", [contract_id])
         except Exception:
-            stop = getattr(hub, "stop", None)
-            if callable(stop):
-                try:
-                    stop()
-                except Exception:
-                    pass
+            hub.stop()
             raise
         return hub
 
@@ -224,24 +240,6 @@ def accounts_from_body(body: dict) -> list[AccountInfo]:
             )
         )
     return accounts
-
-
-def _default_quote_hub(client: ReadOnlyProjectXClient):
-    try:
-        from signalrcore.hub_connection_builder import HubConnectionBuilder
-    except ImportError as exc:
-        raise ProjectXError("signalrcore is not installed") from exc
-    # The token is in the query string. Callers must not log this URL or exception text
-    # that might repeat it. The check command redacts the token before printing.
-    url = f"{client.market_hub_url}?access_token={client.token}"
-    return (
-        HubConnectionBuilder()
-        .with_url(url, options={"skip_negotiation": True, "verify_ssl": True})
-        .with_automatic_reconnect(
-            {"type": "raw", "keep_alive_interval": 10, "reconnect_interval": 5, "max_attempts": 5}
-        )
-        .build()
-    )
 
 
 def _raise_if_failed(body: dict, what: str) -> None:

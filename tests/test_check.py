@@ -149,7 +149,7 @@ def _run(tmp_path, session, **kwargs):
         username=USERNAME,
         api_key=API_KEY,
         api_url="https://api.topstepx.com",
-        market_hub_url="https://rtc.topstepx.com/hubs/market",
+        market_hub_url=kwargs.pop("market_hub_url", "https://rtc.topstepx.com/hubs/market"),
         log_dir=tmp_path,
         now=datetime(2026, 10, 7, 15, 0, tzinfo=timezone.utc),
         stdout=buffer,
@@ -326,22 +326,33 @@ def test_oldest_first_bars_are_reported(tmp_path):
     assert "first timestamp (as returned): 2026-10-07T13:55:00Z" in text
 
 
-def test_signalr_handshake_failure_is_redacted_and_does_not_fail_the_check(tmp_path):
+def test_signalr_handshake_failure_is_redacted_and_fails_the_check(tmp_path):
     session = FakeSession(_routes(_accounts(_combine_row())))
 
     def explode(client, contract_id, seconds, sleep=None):
         raise ConnectionError(f"handshake failed access_token={client.token} key={API_KEY}")
 
-    code, text, report = _run(tmp_path, session, skip_signalr=False, listen_quotes=explode, signalr_seconds=20)
-    assert code == 0
-    assert "OVERALL PASS" in text
+    code, text, report = _run(
+        tmp_path,
+        session,
+        skip_signalr=False,
+        listen_quotes=explode,
+        signalr_seconds=20,
+        market_hub_url=f"https://rtc.topstepx.com/hubs/market?access_token={TOKEN}",
+    )
+    assert code == 1
+    assert "OVERALL FAIL" in text
+    assert "hub: wss://rtc.topstepx.com/hubs/market (token not shown)" in text
     assert "handshake failed" in text
-    assert "  signalr    FAIL" in text
+    assert "signalr" in text and "FAIL" in text
     assert TOKEN not in text
     assert API_KEY not in text
+    hub_line = next(line for line in text.splitlines() if line.strip().startswith("hub:"))
+    assert hub_line.strip() == "hub: wss://rtc.topstepx.com/hubs/market (token not shown)"
     assert TOKEN not in json.dumps(report)
     assert API_KEY not in json.dumps(report)
     assert report["steps"]["signalr"]["status"] == "FAIL"
+    assert report["steps"]["signalr"]["hub"] == "wss://rtc.topstepx.com/hubs/market"
 
 
 def test_signalr_sample_is_printed_and_the_hub_is_not_required_to_fail_the_check(tmp_path):
@@ -368,6 +379,44 @@ def test_signalr_sample_is_printed_and_the_hub_is_not_required_to_fail_the_check
     assert TOKEN not in text
     assert report["steps"]["signalr"]["status"] == "PASS"
     assert report["steps"]["signalr"]["quote_count"] == 1
+
+
+def test_zero_quotes_fail_when_the_mes_session_is_open_and_warn_when_it_is_closed(tmp_path):
+    session = FakeSession(_routes(_accounts(_combine_row())))
+
+    def no_quotes(client, contract_id, seconds, sleep=None):
+        return {"ok": True, "quotes": [], "public_url": "wss://rtc.topstepx.com/hubs/market"}
+
+    code, text, report = _run(tmp_path, session, skip_signalr=False, listen_quotes=no_quotes, signalr_seconds=20)
+    assert code == 1
+    assert "0 quotes while the CME equity-index session is open" in text
+    assert report["steps"]["signalr"]["status"] == "FAIL"
+    assert report["steps"]["signalr"]["market_open"] is True
+    assert "OVERALL FAIL" in text
+
+    import io
+
+    closed = io.StringIO()
+    saturday = datetime(2026, 10, 10, 18, 0, tzinfo=timezone.utc)
+    closed_dir = tmp_path / "closed"
+    code = run_check(
+        CONFIG,
+        session=FakeSession(_routes(_accounts(_combine_row()))),
+        username=USERNAME,
+        api_key=API_KEY,
+        log_dir=closed_dir,
+        now=saturday,
+        stdout=closed,
+        skip_signalr=False,
+        listen_quotes=no_quotes,
+        signalr_seconds=20,
+    )
+    closed_text = closed.getvalue()
+    assert code == 0
+    assert "WARN" in closed_text
+    assert "session is closed" in closed_text
+    assert "OVERALL PASS" in closed_text
+    assert API_KEY not in closed_text
 
 
 def test_signalr_listener_counts_one_quote_and_disconnects():

@@ -146,6 +146,7 @@ class RuntimeConfig:
     log_dir: str
     poll_seconds: int
     flatten_on_start: bool
+    quote_timeout_seconds: int
 
 
 @dataclass(frozen=True)
@@ -312,6 +313,7 @@ def _build(data: dict, source: str) -> BotConfig:
             log_dir=str(runtime["log_dir"]),
             poll_seconds=int(runtime["poll_seconds"]),
             flatten_on_start=bool(runtime["flatten_on_start"]),
+            quote_timeout_seconds=int(runtime.get("quote_timeout_seconds", 20)),
         ),
         broker=BrokerConfig(
             projectx_use_live_data=bool(broker["projectx_use_live_data"]),

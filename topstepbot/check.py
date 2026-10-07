@@ -26,9 +26,11 @@ from topstepbot.broker.readonly import (
     ReadOnlyProjectXClient,
     accounts_from_body,
 )
+from topstepbot.broker.signalr import public_hub_url
 from topstepbot.config import BotConfig
 from topstepbot.models import AccountInfo
 from topstepbot.redact import redact, redact_text
+from topstepbot.session import cme_equity_index_open
 
 _STEP_ORDER = ("auth", "accounts", "contracts", "bars", "signalr")
 _50K_NAME = re.compile(r"(?<![0-9])50K", re.IGNORECASE)
@@ -150,11 +152,17 @@ def run_check(
                     "(expected a name containing 50K and TC or COMBINE)."
                 )
                 summary = "50K Combine not identified by name"
+            needle = config.account.account_name_contains.strip()
             say(
-                f"   Config account.kind is still {config.account.kind!r}. "
-                "This check does not trade and does not change that setting. "
-                "practice mode can send orders; do not run it from this check."
+                f"   Config account.kind is {config.account.kind!r}"
+                + (f" and account_name_contains is {needle!r}." if needle else ".")
+                + " This check does not trade."
             )
+            if any(item.simulated is True and item.name.upper().startswith("50KTC") for item in combines):
+                say(
+                    "   Allowed target: simulated=true and the name starts with 50KTC. "
+                    "A Live Funded account (simulated=false, or a name containing LIVE) is still refused."
+                )
             say(
                 "   The bot's own daily stop in config is $400. "
                 "A Standard 50K Combine can also have Topstep's $1,000 Daily Loss Limit. "
@@ -291,7 +299,7 @@ def run_check(
                 say("   first timestamp (as returned): none")
                 say("   last timestamp (as returned): none")
             say(f"   arrival order: {order}")
-            say("   The trading client sorts bars oldest-first after this. The check does not.")
+            say("   Confirmed shape is newest-first. The trading client sorts these oldest-first. The check does not.")
             steps["bars"] = {
                 "status": "PASS",
                 "summary": f"count={len(bars)} order={order}",
@@ -303,12 +311,16 @@ def run_check(
 
     say("")
     say(f"5. SignalR market hub  MES quotes for {signalr_seconds:g} seconds")
+    hub_url = _safe_hub_url(getattr(client, "market_hub_url", ""), secrets)
+    if hub_url:
+        say(f"   hub: {hub_url} (token not shown)")
+    market_open = cme_equity_index_open(moment)
     if skip_signalr:
         say("   SKIP  --no-signalr was set.")
-        steps["signalr"] = {"status": "SKIP", "summary": "skipped"}
+        steps["signalr"] = {"status": "SKIP", "summary": "skipped", "hub": hub_url}
     elif not client.token or not contract_id:
         say("   SKIP  No token or contract id, so the hub was not opened.")
-        steps["signalr"] = {"status": "SKIP", "summary": "not attempted"}
+        steps["signalr"] = {"status": "SKIP", "summary": "not attempted", "hub": hub_url}
     else:
         listener = listen_quotes or listen_market_quotes
         try:
@@ -316,31 +328,24 @@ def run_check(
         except Exception as exc:  # noqa: BLE001 — a hub failure must not abort the summary
             result = {"ok": False, "error": exc, "quotes": []}
         quotes = list(result.get("quotes") or [])
-        if result.get("ok"):
-            say(f"   quotes arrived: {len(quotes)}")
-            if quotes:
-                say(f"   sample: {_format_quote(quotes[0])}")
-            else:
-                say("   sample: none (the hub connected; the market may be closed)")
-            say("   Disconnected.")
-            steps["signalr"] = {
-                "status": "PASS",
-                "summary": f"{len(quotes)} quotes",
-                "quote_count": len(quotes),
-                "sample": quotes[0] if quotes else None,
-            }
-        else:
-            error = result.get("error")
-            safe = _safe_error(error, secrets)
-            say(f"   FAIL  Market hub handshake failed: {safe}")
-            say("   Continuing. Quotes are optional. Bars still come from History/retrieveBars.")
-            steps["signalr"] = {
-                "status": "FAIL",
-                "summary": "handshake failed",
-                "error": safe,
-                "quote_count": len(quotes),
-                "sample": quotes[0] if quotes else None,
-            }
+        printed_hub = result.get("public_url") or hub_url
+        if printed_hub and printed_hub != hub_url:
+            say(f"   hub: {printed_hub} (token not shown)")
+        say(f"   quotes arrived: {len(quotes)}")
+        if quotes:
+            say(f"   sample: {_format_quote(quotes[0])}")
+        status, summary, detail = _signalr_status(len(quotes), bool(result.get("ok")), result.get("error"), market_open, secrets)
+        say(f"   {status}  {detail}")
+        say("   Disconnected.")
+        steps["signalr"] = {
+            "status": status,
+            "summary": summary,
+            "hub": printed_hub or hub_url,
+            "market_open": market_open,
+            "error": _safe_error(result.get("error"), secrets) if result.get("error") else "",
+            "quote_count": len(quotes),
+            "sample": quotes[0] if quotes else None,
+        }
 
     return _finish(directory, moment, steps, secrets, say)
 
@@ -382,6 +387,11 @@ def classify_bar_order(bars: list[dict]) -> str:
 def listen_market_quotes(client: ReadOnlyProjectXClient, contract_id: str, seconds: float, sleep=time.sleep) -> dict:
     """Connect, count GatewayQuote events, then stop the hub."""
     quotes: list[dict] = []
+    public = ""
+    try:
+        public = public_hub_url(client.market_hub_url)
+    except ProjectXError:
+        public = ""
 
     def on_quote(*args) -> None:
         quotes.append(normalize_quote(args))
@@ -389,9 +399,13 @@ def listen_market_quotes(client: ReadOnlyProjectXClient, contract_id: str, secon
     hub = None
     try:
         hub = client.connect_quotes(contract_id, on_quote)
+        public = getattr(hub, "public_url", None) or public
         sleep(max(0.0, seconds))
+        failure = getattr(hub, "error", None)
+        if failure is not None and not quotes:
+            return {"ok": False, "error": failure, "quotes": quotes, "public_url": public}
     except Exception as exc:  # noqa: BLE001 — handshake errors are reported, not raised
-        return {"ok": False, "error": exc, "quotes": quotes}
+        return {"ok": False, "error": exc, "quotes": quotes, "public_url": public}
     finally:
         if hub is not None:
             stop = getattr(hub, "stop", None)
@@ -400,7 +414,36 @@ def listen_market_quotes(client: ReadOnlyProjectXClient, contract_id: str, secon
                     stop()
                 except Exception:
                     pass
-    return {"ok": True, "error": None, "quotes": quotes}
+    return {"ok": True, "error": None, "quotes": quotes, "public_url": public}
+
+
+def _signalr_status(quote_count: int, ok: bool, error: object, market_open: bool, secrets: list[str]) -> tuple[str, str, str]:
+    """FAIL when the session is open and no quote arrived. WARN only when it is closed."""
+    if not ok:
+        safe = _safe_error(error, secrets)
+        return "FAIL", "handshake failed", f"Market hub failed: {safe}"
+    if quote_count > 0:
+        return "PASS", f"{quote_count} quotes", f"{quote_count} quotes"
+    if market_open:
+        return (
+            "FAIL",
+            "0 quotes while MES is open",
+            "0 quotes while the CME equity-index session is open. The bot will not trade without a live quote.",
+        )
+    return (
+        "WARN",
+        "0 quotes; MES session is closed",
+        "0 quotes. The CME equity-index session is closed (halt 16:00–17:00 CT, or the weekend). Zero quotes are expected.",
+    )
+
+
+def _safe_hub_url(base: str, secrets: list[str]) -> str:
+    if not base:
+        return ""
+    try:
+        return redact_text(public_hub_url(base), secrets)
+    except ProjectXError:
+        return ""
 
 
 def normalize_quote(args: tuple) -> dict:
@@ -482,12 +525,14 @@ def _finish(directory: Path, moment: datetime, steps: dict, secrets: list[str], 
         step = steps[name]
         say(f"  {name:<10} {step['status']:<4}  {step.get('summary', '')}")
     required = [steps[name]["status"] for name in ("auth", "accounts", "contracts", "bars")]
-    overall = "PASS" if all(status == "PASS" for status in required) else "FAIL"
-    if overall == "PASS" and steps["signalr"]["status"] == "FAIL":
-        say("OVERALL PASS")
-        say("SignalR failed. The REST checks still passed. A handshake error does not place any order.")
-    else:
-        say(f"OVERALL {overall}")
+    rest_ok = all(status == "PASS" for status in required)
+    signal = steps["signalr"]["status"]
+    overall = "PASS" if rest_ok and signal != "FAIL" else "FAIL"
+    say(f"OVERALL {overall}")
+    if signal == "FAIL" and rest_ok:
+        say("SignalR FAIL. Login and market data were readable, but there is no live MES quote. Practice mode will stay flat.")
+    elif signal == "WARN" and overall == "PASS":
+        say("SignalR WARN. The MES session is closed, so zero quotes are not a failed feed. This check did not trade.")
     _write_report(directory, moment, steps, secrets, say)
     return 0 if overall == "PASS" else 1
 

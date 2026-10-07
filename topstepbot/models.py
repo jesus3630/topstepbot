@@ -155,7 +155,7 @@ class AccountInfo:
     can_trade: bool | None = None
     is_visible: bool | None = None
     balance: float | None = None
-    # None means the payload did not say. SignalR accounts include this flag;
-    # the REST search example does not. TODO-VERIFY on a live response.
+    # None means the payload did not say. A live Account/search on 2026-10-07
+    # included simulated=true. The missing-flag path remains for older payloads.
     simulated: bool | None = None
     raw: dict = field(default_factory=dict)

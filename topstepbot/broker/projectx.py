@@ -12,11 +12,15 @@ Verified against the public docs at https://gateway.docs.projectx.com on
 - POST /api/Order/cancel, /api/Order/modify, /api/Order/searchOpen
 - POST /api/Position/searchOpen, /api/Position/closeContract
 - POST /api/Trade/search
-- SignalR user hub https://rtc.topstepx.com/hubs/user
-- SignalR market hub https://rtc.topstepx.com/hubs/market
+- SignalR user hub wss://rtc.topstepx.com/hubs/user
+- SignalR market hub wss://rtc.topstepx.com/hubs/market
+  (docs write https; the WebSocket client uses wss and skipNegotiation)
 
-Items marked TODO-VERIFY were not confirmed by a live call. This repo does not
-ship credentials and does not place orders by itself.
+A live read-only check on 2026-10-07 confirmed Account/search fields
+(simulated, canTrade, balance), the MES front month
+(CON.F.US.MES.Z26 / MESZ6 / F.US.MES, tick 0.25, tick value 1.25), and that
+retrieveBars returns newest-first. Items still marked TODO-VERIFY were not
+confirmed by a live call. This repo does not ship credentials.
 
 Bracket mode: the account must be set to Auto OCO Brackets in TopstepX
 (Settings > Risk Settings). In Position Brackets mode the API rejects bracket
@@ -112,8 +116,8 @@ class ProjectXClient:
                     name=str(raw.get("name") or ""),
                     can_trade=raw.get("canTrade"),
                     is_visible=raw.get("isVisible"),
-                    balance=_optional_float(raw.get("balance")),
-                    # TODO-VERIFY: present on GatewayUserAccount, absent from the REST example.
+                    balance=_optional_float(raw.get("balance")) if "balance" in raw else None,
+                    # Confirmed 2026-10-07: Account/search returned simulated and balance.
                     simulated=raw.get("simulated") if "simulated" in raw else None,
                     raw=dict(raw),
                 )
@@ -144,8 +148,9 @@ class ProjectXClient:
     ) -> list[Bar]:
         """Return bars oldest-first.
 
-        TODO-VERIFY: the published example lists newest bars first. This sorts
-        by timestamp either way. `limit` cannot exceed 20,000.
+        Confirmed 2026-10-07 on the Combine: retrieveBars sends newest bars
+        first. This sorts ascending so the strategy never sees the future
+        first. `limit` cannot exceed 20,000.
         """
         if limit > 20000:
             limit = 20000
@@ -250,62 +255,44 @@ class ProjectXClient:
         return list(body.get("trades") or [])
 
     def connect_market_hub(self, contract_id: str, on_trade: Callable, on_quote: Callable | None = None):
-        """Subscribe to market trades and quotes.
+        """Subscribe to market trades and quotes on wss://rtc.topstepx.com/hubs/market.
 
-        TODO-VERIFY: the JavaScript sample uses skipNegotiation and a websocket
-        to rtc.topstepx.com. The Python signalrcore handshake against that hub
-        has not been run from this repo. If it fails, practice mode still polls
-        retrieveBars.
+        Subscriptions are sent inside the handshake task. The returned client
+        does not log the URL, because the URL contains the access token.
         """
-        try:
-            from signalrcore.hub_connection_builder import HubConnectionBuilder
-        except ImportError as exc:
-            raise ProjectXError("signalrcore is not installed") from exc
+        from topstepbot.broker.signalr import JsonSignalRClient
+
         if not self.token:
             self.login()
-        url = f"{self.market_hub_url}?access_token={self.token}"
-        hub = (
-            HubConnectionBuilder()
-            .with_url(url, options={"skip_negotiation": True, "verify_ssl": True})
-            .with_automatic_reconnect(
-                {"type": "raw", "keep_alive_interval": 10, "reconnect_interval": 5, "max_attempts": 5}
-            )
-            .build()
-        )
-        hub.on("GatewayTrade", lambda contract, data: on_trade(contract, data))
+        handlers: dict = {"GatewayTrade": lambda *args: on_trade(*args)}
+        subscriptions = [("SubscribeContractTrades", [contract_id])]
         if on_quote is not None:
-            hub.on("GatewayQuote", lambda contract, data: on_quote(contract, data))
+            handlers["GatewayQuote"] = lambda *args: on_quote(*args)
+            subscriptions.insert(0, ("SubscribeContractQuotes", [contract_id]))
+        hub = JsonSignalRClient(self.market_hub_url, self.token, handlers, subscriptions)
         hub.start()
-        hub.send("SubscribeContractTrades", [contract_id])
-        hub.send("SubscribeContractQuotes", [contract_id])
         return hub
 
     def connect_user_hub(self, account_id: int, on_account: Callable, on_order: Callable, on_position: Callable, on_trade: Callable):
-        """TODO-VERIFY: same SignalR caveat as connect_market_hub."""
-        try:
-            from signalrcore.hub_connection_builder import HubConnectionBuilder
-        except ImportError as exc:
-            raise ProjectXError("signalrcore is not installed") from exc
+        """User hub. Same WebSocket client as the market hub. Does not log the token."""
+        from topstepbot.broker.signalr import JsonSignalRClient
+
         if not self.token:
             self.login()
-        url = f"{self.user_hub_url}?access_token={self.token}"
-        hub = (
-            HubConnectionBuilder()
-            .with_url(url, options={"skip_negotiation": True, "verify_ssl": True})
-            .with_automatic_reconnect(
-                {"type": "raw", "keep_alive_interval": 10, "reconnect_interval": 5, "max_attempts": 5}
-            )
-            .build()
-        )
-        hub.on("GatewayUserAccount", on_account)
-        hub.on("GatewayUserOrder", on_order)
-        hub.on("GatewayUserPosition", on_position)
-        hub.on("GatewayUserTrade", on_trade)
+        handlers = {
+            "GatewayUserAccount": on_account,
+            "GatewayUserOrder": on_order,
+            "GatewayUserPosition": on_position,
+            "GatewayUserTrade": on_trade,
+        }
+        subscriptions = [
+            ("SubscribeAccounts", []),
+            ("SubscribeOrders", [account_id]),
+            ("SubscribePositions", [account_id]),
+            ("SubscribeTrades", [account_id]),
+        ]
+        hub = JsonSignalRClient(self.user_hub_url, self.token, handlers, subscriptions)
         hub.start()
-        hub.send("SubscribeAccounts", [])
-        hub.send("SubscribeOrders", [account_id])
-        hub.send("SubscribePositions", [account_id])
-        hub.send("SubscribeTrades", [account_id])
         return hub
 
     def _post(self, path: str, payload: dict, auth: bool = True) -> dict:
@@ -408,10 +395,13 @@ def build_place_payload(
 def pick_front_month(contracts: list[dict], symbol: str = "MES") -> dict:
     """Active front month for MES.
 
-    TODO-VERIFY: the MES symbol id (expected to look like F.US.MES) was not in
-    the published NQ/ES examples. Matching prefers an active contract whose
-    name is MES + month code, whose symbolId ends in .MES, or whose description
-    says Micro E-mini S&P.
+    Confirmed 2026-10-07 from Contract/search on the Combine: the active
+    contract was id ``CON.F.US.MES.Z26``, name ``MESZ6``, symbolId ``F.US.MES``,
+    tickSize 0.25, tickValue 1.25, activeContract true. The name uses a
+    one-digit year (MESZ6); the id uses two (Z26). Matching keeps an active
+    contract whose name is MES plus a month code, whose symbolId ends in
+    ``.MES``, or whose description says Micro E-mini S&P. The first active
+    match in the order Contract/search returned is the one the bot trades.
     """
     symbol = symbol.upper()
     chosen = []
@@ -430,8 +420,7 @@ def pick_front_month(contracts: list[dict], symbol: str = "MES") -> dict:
     if not chosen:
         raise ProjectXError(
             f"No active {symbol} contract in the ProjectX contract list. "
-            "Check Contract/search and set instrument.contract_id if the naming differs. "
-            "TODO-VERIFY MES symbol id."
+            "Check Contract/search and set instrument.contract_id if the naming differs."
         )
     return chosen[0]
 

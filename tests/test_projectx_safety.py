@@ -1,8 +1,8 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from topstepbot.broker.accounts import assert_account_allowed, looks_live_funded
 from topstepbot.broker.base import AccountRejected, ProtectiveStopRequired
-from topstepbot.broker.projectx import ProjectXClient, build_place_payload
+from topstepbot.broker.accounts import assert_account_allowed, choose_account, looks_live_funded
+from topstepbot.broker.projectx import ProjectXClient, build_place_payload, pick_front_month
 from topstepbot.config import LIVE_FUNDED_OVERRIDE, load_config
 from topstepbot.models import AccountInfo, BracketLeg, Side
 
@@ -38,9 +38,29 @@ def test_override_must_be_the_exact_phrase():
     assert "override" in reason
 
 
+def test_confirmed_50k_combine_is_allowed_and_live_funded_is_not():
+    combine = _account(
+        id=28359182,
+        name="50KTC-SKU-V2-DLL-694099-17865243",
+        balance=50000.0,
+        can_trade=True,
+        simulated=True,
+    )
+    reason = assert_account_allowed(combine, CONFIG)
+    assert "50KTC" in reason
+    # Allowed even if the config kind has not been switched, because simulated is true.
+    assert "50KTC" in assert_account_allowed(combine, _with_kind("practice"))
+    live = _account(name="50KTC-SKU-V2-DLL-1", simulated=False, can_trade=True)
+    try:
+        assert_account_allowed(live, CONFIG)
+        raise AssertionError("simulated false must be refused")
+    except AccountRejected as exc:
+        assert "Live Funded" in str(exc)
+
+
 def test_practice_and_combine_names_pass_when_simulated_flag_is_missing():
     practice = _account(name="PRACTICE-50K", simulated=None)
-    assert "practice" in assert_account_allowed(practice, CONFIG)
+    assert "practice" in assert_account_allowed(practice, _with_kind("practice"))
     combine_cfg = _with_kind("combine")
     combine = _account(name="50KTC-12345", simulated=None)
     assert "combine" in assert_account_allowed(combine, combine_cfg)
@@ -160,6 +180,93 @@ def test_rejected_bracket_cancels_the_order_id():
     cancel = [payload for url, payload in calls if url.endswith("/api/Order/cancel")]
     assert cancel == [{"accountId": 1, "orderId": 99}]
     assert all("key" != payload.get("apiKey") or url.endswith("loginKey") for url, payload in calls)
+
+
+def test_choose_account_pins_the_50k_combine_and_refuses_live():
+    practice = _account(id=1, name="PRAC-V2-1", simulated=True, can_trade=True)
+    combine = _account(
+        id=28359182,
+        name="50KTC-SKU-V2-DLL-694099-17865243",
+        simulated=True,
+        can_trade=True,
+        balance=50000.0,
+    )
+    chosen = choose_account([practice, combine], CONFIG)
+    assert chosen.id == 28359182
+
+
+def test_front_month_matches_the_confirmed_mes_contract():
+    picked = pick_front_month(
+        [
+            {
+                "id": "CON.F.US.ENQ.Z26",
+                "name": "NQZ6",
+                "description": "E-mini NASDAQ",
+                "tickSize": 0.25,
+                "tickValue": 5,
+                "activeContract": True,
+                "symbolId": "F.US.ENQ",
+            },
+            {
+                "id": "CON.F.US.MES.H27",
+                "name": "MESH7",
+                "description": "Micro E-mini S&P 500",
+                "tickSize": 0.25,
+                "tickValue": 1.25,
+                "activeContract": False,
+                "symbolId": "F.US.MES",
+            },
+            {
+                "id": "CON.F.US.MES.Z26",
+                "name": "MESZ6",
+                "description": "Micro E-mini S&P 500",
+                "tickSize": 0.25,
+                "tickValue": 1.25,
+                "activeContract": True,
+                "symbolId": "F.US.MES",
+            },
+        ]
+    )
+    assert picked["id"] == "CON.F.US.MES.Z26"
+    assert picked["name"] == "MESZ6"
+    assert picked["tickSize"] == 0.25
+    assert picked["tickValue"] == 1.25
+
+
+def test_retrieve_bars_sorts_newest_first_to_oldest_first():
+    class FakeResponse:
+        def __init__(self, body):
+            self.status_code = 200
+            self._body = body
+
+        def json(self):
+            return self._body
+
+    class FakeSession:
+        def post(self, url, json, headers, timeout):
+            assert url.endswith("/api/History/retrieveBars")
+            return FakeResponse(
+                {
+                    "success": True,
+                    "errorCode": 0,
+                    "bars": [
+                        {"t": "2026-10-07T16:25:00+00:00", "o": 1, "h": 2, "l": 1, "c": 2, "v": 3},
+                        {"t": "2026-10-07T16:20:00+00:00", "o": 1, "h": 2, "l": 1, "c": 2, "v": 3},
+                        {"t": "2026-10-06T16:30:00+00:00", "o": 1, "h": 2, "l": 1, "c": 2, "v": 3},
+                    ],
+                }
+            )
+
+    client = ProjectXClient("trader", "super-secret-key", session=FakeSession())
+    client.token = "session-token"
+    client.token_acquired_at = datetime.now(timezone.utc)
+    end = datetime(2026, 10, 7, 16, 30, tzinfo=timezone.utc)
+    bars = client.retrieve_bars("CON.F.US.MES.Z26", end - timedelta(days=1), end, unit=2, unit_number=5)
+    assert [bar.time.isoformat() for bar in bars] == [
+        "2026-10-06T16:30:00+00:00",
+        "2026-10-07T16:20:00+00:00",
+        "2026-10-07T16:25:00+00:00",
+    ]
 
 
 def _with_override(value: str):

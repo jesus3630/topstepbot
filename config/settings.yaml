@@ -16,20 +16,21 @@ instrument:
   symbol: MES
   tick_size: 0.25          # [CONTRACT SPEC] MES minimum price increment
   tick_value: 1.25         # [CONTRACT SPEC] dollars per tick ($5 per point)
-  # Leave blank to use the active front month from the API (name starts with MES).
-  # Set a contract id only if you need to pin one, for example CON.F.US.MES.H26.
+  # Leave blank to use the active front month from Contract/search.
+  # Confirmed 2026-10-07 on this Combine: id CON.F.US.MES.Z26, name MESZ6,
+  # symbolId F.US.MES, tickSize 0.25, tickValue 1.25, activeContract true.
   contract_id: ""
 
 account:
   label: "50K"
   starting_balance: 50000
-  # Optional. Leave blank and the bot uses the only active account that does
-  # not look like a Topstep Live Funded account. Set these to pin one account.
+  # Pin the Combine whose name starts with 50KTC. Confirmed live:
+  # simulated true, canTrade true, balance present. A Live Funded account
+  # (simulated false, or a name containing LIVE) is still refused.
   account_id: null
-  account_name_contains: ""
-  # practice, combine, or express. Used when the API does not say "simulated".
-  # A live-looking account is still refused. See README.
-  kind: practice
+  account_name_contains: "50KTC"
+  # practice, combine, or express. Used when the API omits "simulated".
+  kind: combine
 
 session:
   timezone: America/Chicago
@@ -163,6 +164,9 @@ runtime:
   poll_seconds: 15
   # Flatten anything open when the bot starts, so a leftover position is not held.
   flatten_on_start: true
+  # While MES is in session, practice mode stays flat unless a live quote
+  # arrives within this many seconds.
+  quote_timeout_seconds: 20
 
 broker:
   # Practice and Combine use the sim data subscription (live: false).

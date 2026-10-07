@@ -47,6 +47,30 @@ def must_flatten(moment: datetime, session: SessionConfig) -> bool:
     return phase_at(moment, session) is Phase.FLAT
 
 
+def cme_equity_index_open(moment: datetime) -> bool:
+    """Whether CME equity-index futures (MES) are in session.
+
+    Globex hours in America/Chicago: Sunday 17:00 through Friday 16:00,
+    with a halt 16:00–17:00 Monday through Thursday. This does not know
+    exchange holidays. A holiday looks "open" here, and the quote check
+    then fails closed if no quotes arrive.
+    """
+    local = as_chicago(moment, "America/Chicago")
+    weekday = local.weekday()
+    minute = local.hour * 60 + local.minute
+    halt = 16 * 60
+    reopen = 17 * 60
+    if weekday == 5:
+        return False
+    if weekday == 6:
+        return minute >= reopen
+    if weekday == 4:
+        return minute < halt
+    if halt <= minute < reopen:
+        return False
+    return True
+
+
 def setup_b_allowed(moment: datetime, session: SessionConfig) -> bool:
     if not entries_allowed(moment, session):
         return False

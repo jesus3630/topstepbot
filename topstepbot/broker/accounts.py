@@ -2,9 +2,12 @@
 
 ProjectX API trading is not allowed on Topstep Live Funded Accounts.
 Practice, Trading Combine, and Express Funded accounts are simulated.
-The REST account-search example does not include a `simulated` flag; the
-SignalR account payload does. When the flag is missing, the account name has
-to match the kind in config (practice, combine, or express).
+
+A live Account/search on 2026-10-07 returned ``simulated``, ``canTrade``, and
+``balance``. The 50K Combine was ``simulated: true``, ``canTrade: true``, and
+its name started with ``50KTC``. That account is an allowed target. Anything
+with ``simulated: false``, or a name that looks live-funded, is still refused.
+When ``simulated`` is missing, the name has to match ``account.kind``.
 """
 
 from __future__ import annotations
@@ -51,11 +54,12 @@ def assert_account_allowed(account: AccountInfo, config: BotConfig) -> str:
             "compliance.allow_live_funded_account_override, and setting it does not make live API trading allowed by Topstep."
         )
 
+    if account.simulated is True and account.name.upper().startswith("50KTC"):
+        return "50K Combine is marked simulated and the name starts with 50KTC"
     if account.simulated is True:
         return "account is marked simulated"
 
-    # TODO-VERIFY: Account/search example payload has id, name, canTrade, isVisible
-    # and does not show `simulated`. GatewayUserAccount on the user hub does.
+    # Older REST examples omitted `simulated`. A live payload on 2026-10-07 included it.
     if name_matches_kind(account.name, config.account.kind):
         return (
             f"simulated flag was not in the account payload; name matches configured kind "

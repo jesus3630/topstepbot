@@ -8,7 +8,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "PyYAML>=6.0",
     "requests>=2.31",
-    "signalrcore>=0.9.5",
+    "websockets>=15",
 ]
 
 [project.optional-dependencies]

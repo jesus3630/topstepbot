@@ -17,9 +17,11 @@ from topstepbot.bars import load_bars
 from topstepbot.broker.accounts import choose_account
 from topstepbot.broker.paper import PaperBroker
 from topstepbot.broker.projectx import ProjectXBroker, ProjectXClient, ProjectXError, pick_front_month
+from topstepbot.broker.signalr import public_hub_url, quote_gate
 from topstepbot.config import BotConfig
 from topstepbot.journal import Journal
 from topstepbot.killswitch import KillSwitch
+from topstepbot.session import cme_equity_index_open
 from topstepbot.strategy.engine import StrategyEngine
 from topstepbot.timeutil import CHICAGO
 
@@ -106,12 +108,28 @@ def run_practice(config: BotConfig, armed: bool) -> None:
         _flatten_leftovers(broker, journal)
     history = _warmup_bars(client, contract["id"], config)
     journal.info(f"Loaded {len(history)} historical 1-minute bars for warmup.")
-    engine = StrategyEngine(config, broker, journal, armed=True)
+    # Warm up unarmed so a dead quote feed cannot place orders on replayed bars.
+    engine = StrategyEngine(config, broker, journal, armed=False)
     for bar in history:
         engine.on_minute(bar)
     kill = KillSwitch(config.runtime.kill_switch_file)
     kill.clear_file()
-    _start_market_hub(client, contract["id"], journal)
+    hub = None
+    hub, quote_count = _await_live_quotes(client, contract["id"], journal, config.runtime.quote_timeout_seconds)
+    decision = quote_gate(quote_count, cme_equity_index_open(datetime.now(CHICAGO)))
+    if decision == "arm":
+        engine.armed = True
+        journal.info("Live MES quote received. Entries are allowed inside the session window.")
+    elif decision == "flat-open":
+        engine.armed = False
+        journal.error(
+            "No live MES quotes within "
+            f"{config.runtime.quote_timeout_seconds:g}s while the equity-index session is open. "
+            "Staying flat. No new orders."
+        )
+    else:
+        engine.armed = False
+        journal.info("MES session is closed and no quote arrived. Staying flat.")
     watcher = _keyboard_watcher(kill)
     seen = {bar.time for bar in history}
     try:
@@ -151,6 +169,13 @@ def run_practice(config: BotConfig, armed: bool) -> None:
         kill.execute(broker, price, now, journal)
         journal.info("Ctrl+C flattened the account.")
     finally:
+        if hub is not None:
+            stop = getattr(hub, "stop", None)
+            if callable(stop):
+                try:
+                    stop()
+                except Exception:
+                    pass
         watcher.join(timeout=0.2)
 
 
@@ -215,22 +240,38 @@ def _flatten_leftovers(broker: ProjectXBroker, journal: Journal) -> None:
     broker.flatten(broker.last_price or float(relevant[0].get("averagePrice") or 0), now)
 
 
-def _start_market_hub(client: ProjectXClient, contract_id: str, journal: Journal) -> None:
-    def on_trade(_contract, data) -> None:
-        # Quotes are advisory. Bars still come from retrieveBars.
-        price = data.get("price") if isinstance(data, dict) else None
-        if price is not None:
-            journal.event("QUOTE", price=price)
+def _await_live_quotes(client: ProjectXClient, contract_id: str, journal: Journal, timeout: float):
+    """Connect to the market hub and wait until one quote arrives, or the timeout.
+
+    Returns ``(hub, quote_count)``. The hub object is None when the handshake
+    fails. Exception text is not logged: it can contain the tokenized hub URL.
+    """
+    quotes: list = []
+
+    def on_quote(*_args) -> None:
+        quotes.append(1)
+
+    def on_trade(*_args) -> None:
+        return None
 
     try:
-        client.connect_market_hub(contract_id, on_trade)
-        journal.info("Market hub connected. TODO-VERIFY: this Python SignalR handshake has not been live-tested.")
+        shown = public_hub_url(client.market_hub_url)
+    except ProjectXError:
+        shown = "market hub"
+    journal.info(f"Connecting to {shown}. The access token is not logged.")
+    try:
+        hub = client.connect_market_hub(contract_id, on_trade, on_quote)
     except Exception as exc:
-        # Do not log the exception text. SignalR errors can include the hub URL,
-        # and that URL carries the session token.
-        journal.info(
-            f"Market hub not connected ({type(exc).__name__}). Bars will come from retrieveBars polling only."
-        )
+        journal.error(f"Market hub failed ({type(exc).__name__}). Staying flat.")
+        return None, 0
+    deadline = time.time() + max(0.0, timeout)
+    while time.time() < deadline and not quotes:
+        if getattr(hub, "error", None) is not None:
+            journal.error(f"Market hub closed ({type(hub.error).__name__}).")
+            break
+        time.sleep(0.2)
+    journal.info(f"Quotes received during the wait: {len(quotes)}.")
+    return hub, len(quotes)
 
 
 def _keyboard_watcher(kill: KillSwitch) -> threading.Thread:
