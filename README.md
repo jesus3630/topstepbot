@@ -1,1 +1,228 @@
-# topstepbot
+# MES morning bot (Topstep practice / combine)
+
+This is a small day-trading program for **MES** (Micro E-mini S&P 500). You run it yourself, on your own Windows or Mac computer, while you sit in front of it. It is built for a free Topstep **Practice** account first, and later a **50K Trading Combine**. It is not a server, and it does not belong on a VPS, a VPN, or a remote machine.
+
+**This is educational software, not financial advice.** Futures trading can lose money, including the entire combine fee. You are responsible for every order the program sends. Topstep will not undo a bad fill because a bot did it.
+
+The full course notes are in [docs/rulebook.md](docs/rulebook.md). Version 1 trades only two of those setups:
+
+- **Setup A.** The 15-minute opening range (8:30–8:45 CT). The bot waits for a strong break, then a pullback that holds the broken side, then enters.
+- **Setup B.** A break of a key level (overnight high/low, prior day high/low/close, pivot, VWAP) and a retest that holds. Only in the first hour.
+
+Every number you might want to change is in **one file**: [config/settings.yaml](config/settings.yaml). If the rulebook says `[PROPOSED DEFAULT]`, that number is in the config, not buried in the code.
+
+## What it will and will not do
+
+- It looks for new trades only from **8:45 to 10:15 CT**.
+- It flattens everything at **10:30 CT**, and it will not hold past Topstep's **3:10 PM CT** cutoff.
+- It risks **$200** a trade, stops the day at **$400** (realized plus open P&L) or at **$800** profit, takes at most **3** trades, and stops after **2 losses in a row**.
+- Size starts at **2 MES** and is reduced when the stop is wide: contracts = risk ÷ (stop distance × tick value + slippage + fees), then capped by `max_contracts`.
+- It takes **half off** at the next key level when that level is at least 2:1, and trails the rest.
+- **Moving the stop to breakeven after the first target is OFF.** Topstep forbids "tight brackets or auto-breakeven used to exploit sim fills." Leave `move_stop_to_breakeven_after_first_target` false unless you have decided, yourself, that you want it. The program will not turn it on for you.
+- It does not trade a day you list under `blackout_dates`, and it does not trade when `no_trade_today` is true. It does **not** download an economic calendar. You type CPI, jobs-report (NFP), and FOMC days yourself.
+- Every entry is sent with a **protective stop at the broker** (a bracket). In TopstepX, turn on **Auto OCO Brackets** under Settings → Risk Settings. If the account is in Position Brackets mode, the API rejects the bracket and this program cancels that order instead of leaving it naked.
+
+## Install
+
+You need Python 3.11 or newer.
+
+**Windows.** Install Python from [python.org](https://www.python.org/downloads/windows/). On the first installer screen, check **Add python.exe to PATH**.
+
+**Mac.** Install Python 3.11+ from [python.org](https://www.python.org/downloads/macos/) or with Homebrew (`brew install python`).
+
+Then, in a terminal opened **in this folder**:
+
+```bash
+python -m venv .venv
+```
+
+Windows, every new terminal:
+
+```bat
+.venv\Scripts\activate
+```
+
+Mac:
+
+```bash
+source .venv/bin/activate
+```
+
+Then:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+If `python` is not found, use `python3` in every command below.
+
+## API key
+
+1. Sign in to TopstepX.
+2. Open Settings → API: <https://topstepx.com/settings?tab=api>
+3. Create a key and copy it once. Copy your **sign-in username** too. That is not your email and not the account number.
+4. In this folder, copy `.env.example` to a file named `.env`.
+5. Paste the username and key into `.env`:
+
+```text
+PROJECTX_USERNAME=your_username
+PROJECTX_API_KEY=your_key
+```
+
+`.env` stays on your PC. It is listed in `.gitignore`. The program reads it and does not print it. Do not email it, do not put it in the config file, and do not paste it into a chat.
+
+Leave the three URL lines as they are unless Topstep gives you different ones. They point at the public ProjectX gateway (`https://api.topstepx.com`) and the realtime hubs (`https://rtc.topstepx.com/hubs/user` and `.../market`).
+
+## Run a backtest
+
+No account and no API key:
+
+```bash
+python -m topstepbot backtest
+```
+
+That replays `data/sample_mes_1m_synthetic.csv`. **Those prices are synthetic.** They were drawn so the backtest has something to do. They are not the real S&P, and a good result on them does not mean the strategy makes money.
+
+The report shows trade count, win rate, average R, max drawdown, the worst day, and whether any day reached the **$400** daily stop or Topstep's **$2,000** maximum loss.
+
+Your own file must look like this. Times can be Central time (with the offset) or UTC (`Z`). A line that starts with `#` is ignored.
+
+```text
+timestamp,open,high,low,close,volume
+2026-01-06T08:30:00-06:00,5642.00,5644.00,5641.75,5643.25,120
+```
+
+```bash
+python -m topstepbot backtest --csv data/downloads/mes_1m.csv
+```
+
+To download real MES 1-minute bars (this sends **no** orders; it only reads history):
+
+```bash
+python scripts/download_bars.py --start 2026-01-05 --end 2026-01-10 --out data/downloads/mes_1m.csv
+```
+
+The history call asks for up to 20,000 bars at a time and one day per request. The sample response on ProjectX's site lists newest bars first; the downloader sorts them oldest-first. See "What is not verified" below.
+
+## Run in paper mode
+
+Paper mode replays a CSV through a simulated account. Nothing is sent to Topstep. You still have to arm it, so a double-click does not trade by surprise:
+
+```bash
+python -m topstepbot paper --arm --speed 0.2
+```
+
+`--speed 0.2` pauses a fifth of a second on each minute so you can try the kill switch. Use `--speed 0` to run it as fast as the backtest.
+
+## Run on a Topstep Practice account
+
+Do this only while you are sitting at **this** computer. Start with the free Practice account. In TopstepX, confirm the account is Practice (or, later, a Combine or Express Funded account), and turn on **Auto OCO Brackets**.
+
+In `config/settings.yaml`:
+
+- `account.kind` is `practice` until you intentionally switch it to `combine` or `express`.
+- `news.no_trade_today` is `false` only on a day you actually want to trade.
+- Put today's date in `blackout_dates` if it is CPI, NFP / jobs, or FOMC. Example: `"2026-03-06"`.
+- Leave `runtime.armed` false. Pass `--arm` on the command instead, so you make the choice that morning.
+
+```bash
+python -m topstepbot practice --arm
+```
+
+The program logs in, picks the one simulated account that matches your settings, and **refuses to trade** if the account looks like a Topstep **Live Funded** account. ProjectX API trading is not allowed there. The only way past that refusal is to type this exact line into `compliance.allow_live_funded_account_override` in the config:
+
+```text
+I_UNDERSTAND_PROJECTX_CANNOT_TRADE_TOPSTEP_LIVE_FUNDED_ACCOUNTS
+```
+
+Typing that does **not** make live API trading allowed by Topstep. Leave the line empty.
+
+Stay at the PC from 8:30 to 10:30 CT. Read the log. If anything looks wrong, stop it.
+
+## How to stop it
+
+Any one of these cancels working orders and flattens:
+
+- Type `kill` and press Enter in the same terminal.
+- Create a file named `KILL` in this folder (the name is set by `runtime.kill_switch_file`).
+- Press Ctrl+C.
+
+A kill switch ignores the minimum hold time. It is an emergency exit, not a strategy. Delete the `KILL` file before you start the next session. The program removes a leftover `KILL` file when it starts, then watches for a new one.
+
+There is also a minimum time between orders (`compliance.min_seconds_between_orders`, default 60 seconds) and a minimum hold (`min_hold_seconds`, default 120 seconds) so the program is not a high-frequency scalper. The two bracket orders that make "sell half / trail the rest" are one decision, sent together. The protective stop already resting at the broker can still fill at any time. That is the point of the stop.
+
+Logs go to the terminal and to `logs/bot-YYYY-MM-DD.log`. Signals, orders, fills, and P&L are written there. Secrets are not.
+
+## Before a paid Combine
+
+Do not point this at a paid combine until you can check every line.
+
+- [ ] You have read [docs/rulebook.md](docs/rulebook.md) and you agree with the config values, especially risk, the two setups, and breakeven left **off**.
+- [ ] The backtest on **your** downloaded data, not the synthetic file, has enough trades that you understand the losers. The course suggests a long sample before real risk. The synthetic file is only a demo.
+- [ ] You have watched it for many sessions on the **Practice** account, sitting at the PC, and the fills match what you expected.
+- [ ] Auto OCO Brackets is on. You have seen a protective stop on every entry in the TopstepX order book.
+- [ ] `round_turn_fee_per_contract` matches your statement. The 1.40 in the config is a placeholder from a public API example, not a promise of your fee.
+- [ ] CPI, NFP, and FOMC days are in `blackout_dates`. You re-check Topstep's rule pages; they change.
+- [ ] You set a Personal Daily Loss Limit in TopstepX as a backstop (the bot's $400 stop is not a substitute for theirs).
+- [ ] The account name is the Combine, not a Live Funded account.
+- [ ] You know how to type `kill`, and you will be at the PC the whole window.
+- [ ] You accept that a bad day can fail the combine. This program does not prevent that.
+
+## Topstep rules that apply to this program
+
+Checked against Topstep's help pages when the rulebook was written (7 Oct 2026). Re-read them yourself before you rely on them:
+
+- Bots are allowed on eligible **simulated** accounts through the TopstepX / ProjectX API. You own the bot and you are solely responsible for it. High-frequency trading is prohibited.
+- Trading has to come from your own PC. No VPS, VPN, or remote server placing, changing, or cancelling orders.
+- **Live Funded Accounts cannot trade through the ProjectX API.** Practice, the Trading Combine, and (under the same written rules) an Express Funded Account are the simulated accounts this is meant for.
+- The 50K combine fails at a **$2,000** trailing maximum loss, including open P&L. The bot's $400 day stop is meant to sit well inside that. It is not the combine rule itself.
+- Topstep also forbids exploiting sim fills, including tight brackets or auto-breakeven used for that purpose. That is why breakeven is off unless you turn it on.
+
+Help pages named in the rulebook: TopstepX API Access, Trading Combine parameters, maximum loss limit, daily loss limit, prohibited strategies, live funded account parameters.
+
+## What is not verified about the ProjectX API
+
+These pieces follow the public docs at <https://gateway.docs.projectx.com> (TopstepX URLs, read 7 Oct 2026). They have **not** been called from this repo, because that would require your key and could send orders. Where a detail was unclear, it is marked `TODO-VERIFY` in the code and isolated in `topstepbot/broker/projectx.py`. The paper broker and the backtest do not need any of it.
+
+Verified from the docs and implemented:
+
+- Login: `POST /api/Auth/loginKey` with `userName` and `apiKey`. The token lasts 24 hours. Later calls send `Authorization: Bearer`.
+- `POST /api/Auth/validate`, `POST /api/Account/search`, `POST /api/Contract/available`, `POST /api/Contract/search`.
+- `POST /api/History/retrieveBars` (units include minute = 2, max 20,000 bars).
+- `POST /api/Order/place` with `stopLossBracket` / `takeProfitBracket`, plus cancel, modify, and `searchOpen`.
+- `POST /api/Position/searchOpen` and `POST /api/Position/closeContract`.
+- `POST /api/Trade/search`.
+- SignalR user hub and market hub URLs, event names (`GatewayTrade`, `GatewayQuote`, `GatewayUserOrder`, and the account/position/trade events), and the order enums (buy = 0, sell = 1, market = 2, stop = 4, limit = 1).
+
+Not verified, so treat practice mode as something **you** test on a Practice account before you trust it:
+
+- **TODO-VERIFY:** The Python `signalrcore` handshake against `rtc.topstepx.com` (the docs show JavaScript). If the hub fails, practice mode still polls `retrieveBars`. Polling is the bar source either way.
+- **TODO-VERIFY:** Whether `Account/search` includes `simulated` and `balance`. The REST example shows `id`, `name`, `canTrade`, `isVisible`. The realtime account message also has `simulated` and `balance`. If `simulated` is missing, the bot allows the account only when its **name** matches `account.kind` (practice / combine / express). Otherwise it refuses.
+- **TODO-VERIFY:** The exact MES contract id. Examples on the site use other products (`F.US.EP`, `F.US.ENQ`, `F.US.MNQ`). The bot keeps an active contract whose name looks like `MES` + a month code, whose symbol id ends in `.MES`, or whose description says Micro E-mini S&P. If that picks the wrong contract, set `instrument.contract_id` yourself.
+- **TODO-VERIFY:** `POST /api/Position/partialCloseContract` (listed in the docs index; the page body was not in the fetch). Version 1 does not need it for the normal "sell half" path. Half and the runner are two separate bracket orders, each with its own stop.
+- **TODO-VERIFY:** Bracket child-order ids. `Order/place` returns the parent id. After a fill, trailing looks for the working stop with `searchOpen`. If it cannot find one, it will not pretend the trail worked.
+- **TODO-VERIFY:** Your real round-turn MES fee. `1.40` is only a starting number from a public trade example.
+- **TODO-VERIFY:** Bar order. The published example is newest-first. The code sorts by time.
+- **TODO-VERIFY:** What the `live: false` flag means on your Practice data subscription. Leave `broker.projectx_use_live_data` false for Practice and Combine.
+
+If a bracket is rejected because the account is in Position Brackets mode, the docs say the order can still be created. This client cancels that order id. Confirm the cancel on your Practice account the first time you connect.
+
+## Layout
+
+| Path | What it is |
+|---|---|
+| `config/settings.yaml` | The only settings file |
+| `docs/rulebook.md` | The course rulebook |
+| `topstepbot/strategy/engine.py` | Setup A and Setup B, shared by backtest and live |
+| `topstepbot/broker/paper.py` | Offline fills |
+| `topstepbot/broker/projectx.py` | ProjectX gateway client |
+| `data/sample_mes_1m_synthetic.csv` | Fake bars so the backtest runs immediately |
+| `tests/` | Unit tests |
+
+```bash
+python -m pytest
+```
+
+## License of the idea
+
+The trading rules are a structured reading of a course and an e-book, plus proposed defaults, plus Topstep's published rules. See the source tags in the rulebook. Nothing in this folder is a promise of profit.
