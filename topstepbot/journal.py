@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+from topstepbot.board import console_text
 from topstepbot.timeutil import CHICAGO
 
 
@@ -18,12 +19,12 @@ class Journal:
         self.logger = logging.getLogger(f"topstepbot.journal.{id(self)}")
         self.logger.setLevel(logging.INFO)
         self.logger.propagate = False
+        self.sink = None
         if not self.logger.handlers:
-            formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
             file_handler = logging.FileHandler(self.path, encoding="utf-8")
-            file_handler.setFormatter(formatter)
+            file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
             stream = logging.StreamHandler()
-            stream.setFormatter(formatter)
+            stream.setFormatter(_ConsoleFormatter())
             self.logger.addHandler(file_handler)
             self.logger.addHandler(stream)
 
@@ -33,7 +34,9 @@ class Journal:
             if _secret_key(key):
                 continue
             parts.append(f"{key}={value}")
-        self.logger.info(" ".join(parts))
+        message = " ".join(parts)
+        self.logger.info(message)
+        self._mirror("info", message)
 
     def signal(self, **fields: object) -> None:
         self.event("SIGNAL", **fields)
@@ -52,9 +55,29 @@ class Journal:
 
     def info(self, message: str) -> None:
         self.logger.info(message)
+        self._mirror("info", message)
 
     def error(self, message: str) -> None:
         self.logger.error(message)
+        self._mirror("error", message)
+
+    def _mirror(self, level: str, message: str) -> None:
+        sink = self.sink
+        if sink is None:
+            return
+        try:
+            sink(level, message)
+        except Exception:
+            return
+
+
+class _ConsoleFormatter(logging.Formatter):
+    """Short sentences on the terminal. The log file keeps the detailed line."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        stamp = datetime.now(CHICAGO).strftime("%H:%M:%S")
+        level = "ERROR" if record.levelno >= logging.ERROR else "INFO"
+        return f"{stamp}  {console_text(record.getMessage(), level)}"
 
 
 def _secret_key(key: str) -> bool:

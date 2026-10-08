@@ -8,6 +8,7 @@ from pathlib import Path
 from topstepbot.backtest.runner import run_backtest
 from topstepbot.check import run_check
 from topstepbot.config import load_config
+from topstepbot.dashboard import serve_dashboard
 from topstepbot.live import run_paper, run_practice
 
 
@@ -46,6 +47,13 @@ def main(argv: list[str] | None = None) -> int:
         help="How long to listen for MES quotes (default 20).",
     )
 
+    dashboard = sub.add_parser(
+        "dashboard",
+        help="Open the command center in your browser. It does not place orders.",
+    )
+    dashboard.add_argument("--port", type=int, default=8765, help="Port on this computer only (default 8765).")
+    dashboard.add_argument("--no-browser", action="store_true", help="Do not open the browser window.")
+
     download = sub.add_parser("download-bars", help="Download MES 1-minute bars to a CSV. Requires .env credentials.")
     download.add_argument("--start", required=True, help="ISO date or timestamp, Central time if no timezone")
     download.add_argument("--end", required=True, help="ISO date or timestamp")
@@ -71,6 +79,9 @@ def main(argv: list[str] | None = None) -> int:
             skip_signalr=args.no_signalr,
             signalr_seconds=args.signalr_seconds,
         )
+    if args.command == "dashboard":
+        serve_dashboard(config, port=args.port, open_browser=not args.no_browser)
+        return 0
     if args.command == "download-bars":
         from topstepbot.download import download_bars
 

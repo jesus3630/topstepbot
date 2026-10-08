@@ -185,6 +185,34 @@ source .venv/bin/activate
 python -m topstepbot practice --arm
 ```
 
+## Command center
+
+The trading window prints short sentences. The long version of each line stays in `logs/bot-<date>.log`. For a screen you can read from across the desk, open the command center in a **second** terminal. Both terminals must be in this same folder (`topstepbot`), so the kill button and the bot share the `KILL` file.
+
+Terminal 1 — the dashboard. Leave it open. It opens a browser on this Mac only (`127.0.0.1`). It does not log in and it cannot place a trade:
+
+```bash
+source .venv/bin/activate
+python -m topstepbot dashboard
+```
+
+Terminal 2 — the bot, after Auto OCO Brackets is on and you are at this computer:
+
+```bash
+source .venv/bin/activate
+python -m topstepbot practice --arm
+```
+
+The page shows armed / watching / in a trade / flat for the day, Central time, the countdown to the 10:30 CT flatten, the MES price, the opening range, today's result, and a plain-English event list. If the bot is not running, the page says so.
+
+The red **KILL** button asks you to confirm, then creates the `KILL` file. That is the same flatten as typing `kill` in the bot window. It is the only thing the dashboard writes.
+
+A read-only check also updates the page while it runs:
+
+```bash
+python -m topstepbot check
+```
+
 ## How to stop it
 
 Any one of these cancels working orders and flattens:

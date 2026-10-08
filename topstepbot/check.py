@@ -20,6 +20,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from topstepbot.board import write_check_state
 from topstepbot.broker.projectx import ProjectXError, pick_front_month
 from topstepbot.broker.readonly import (
     READ_ONLY_PATHS,
@@ -91,7 +92,7 @@ def run_check(
         say("   FAIL  Missing PROJECTX_USERNAME or PROJECTX_API_KEY in .env. The values are not shown.")
         steps["auth"] = {"status": "FAIL", "summary": "missing .env credentials"}
         _skip_after(steps, "auth")
-        return _finish(directory, moment, steps, secrets, say)
+        return _finish(directory, moment, steps, secrets, say, config)
 
     client = ReadOnlyProjectXClient(
         username=username,
@@ -106,7 +107,7 @@ def run_check(
         say(f"   FAIL  {exc}")
         steps["auth"] = {"status": "FAIL", "summary": "login failed", "error": str(exc)}
         _skip_after(steps, "auth")
-        return _finish(directory, moment, steps, secrets, say)
+        return _finish(directory, moment, steps, secrets, say, config)
     if client.token:
         secrets.append(client.token)
     say("   PASS  Logged in. A token was received and is not shown.")
@@ -347,7 +348,7 @@ def run_check(
             "sample": quotes[0] if quotes else None,
         }
 
-    return _finish(directory, moment, steps, secrets, say)
+    return _finish(directory, moment, steps, secrets, say, config)
 
 
 def identify_50k_combines(accounts: list[AccountInfo]) -> list[AccountInfo]:
@@ -516,7 +517,7 @@ def _safe_error(error: object, secrets: list[str]) -> str:
     return text
 
 
-def _finish(directory: Path, moment: datetime, steps: dict, secrets: list[str], say) -> int:
+def _finish(directory: Path, moment: datetime, steps: dict, secrets: list[str], say, config: BotConfig | None = None) -> int:
     for name in _STEP_ORDER:
         steps.setdefault(name, {"status": "SKIP", "summary": "not run"})
     say("")
@@ -534,6 +535,8 @@ def _finish(directory: Path, moment: datetime, steps: dict, secrets: list[str], 
     elif signal == "WARN" and overall == "PASS":
         say("SignalR WARN. The MES session is closed, so zero quotes are not a failed feed. This check did not trade.")
     _write_report(directory, moment, steps, secrets, say)
+    if config is not None:
+        write_check_state(directory, config, steps, secrets)
     return 0 if overall == "PASS" else 1
 
 

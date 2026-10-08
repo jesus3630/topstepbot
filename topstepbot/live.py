@@ -14,6 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from topstepbot.bars import load_bars
+from topstepbot.board import SessionPublisher, quote_price
 from topstepbot.broker.accounts import choose_account
 from topstepbot.broker.paper import PaperBroker
 from topstepbot.broker.projectx import ProjectXBroker, ProjectXClient, ProjectXError, pick_front_month
@@ -29,6 +30,11 @@ from topstepbot.timeutil import CHICAGO
 def run_paper(config: BotConfig, csv_path: str | Path, speed: float, armed: bool) -> None:
     bars = load_bars(csv_path, config.session.timezone)
     journal = Journal(config.runtime.log_dir, clock=bars[0].time if bars else None)
+    publisher = SessionPublisher(config)
+    publisher.attach(journal)
+    publisher.account_name = "Paper"
+    publisher.contract_name = config.instrument.symbol
+    publisher.mode = "live"
     kill = KillSwitch(config.runtime.kill_switch_file)
     kill.clear_file()
     journal.info("Paper mode. No orders go to Topstep. Type 'kill' and press Enter, or create the KILL file.")
@@ -38,13 +44,18 @@ def run_paper(config: BotConfig, csv_path: str | Path, speed: float, armed: bool
     try:
         for bar in bars:
             if kill.execute(broker, bar.close, bar.time, journal):
+                publisher.mode = "killed"
+                publisher.publish(engine, broker, bar.time, force=True)
                 journal.info("Kill switch stopped paper mode.")
                 break
             engine.on_minute(bar)
+            publisher.publish(engine, broker, bar.time)
             if speed > 0:
                 time.sleep(speed)
         else:
             engine.finish()
+            if bars:
+                publisher.publish(engine, broker, bars[-1].time, force=True)
     except KeyboardInterrupt:
         kill.trip("Ctrl+C")
         price = broker.last_price or (bars[-1].close if bars else 0)
@@ -83,6 +94,9 @@ def run_practice(config: BotConfig, armed: bool) -> None:
         failure_window_seconds=config.runtime.api_failure_window_seconds,
     )
     journal = Journal(config.runtime.log_dir)
+    publisher = SessionPublisher(config)
+    publisher.attach(journal)
+    publisher.secrets = [api_key]
     journal.info(
         "Practice mode. You are responsible for every order. Stay at this PC until 10:30 CT. "
         "Type 'kill' and press Enter, or create a file named KILL, to flatten."
@@ -94,6 +108,8 @@ def run_practice(config: BotConfig, armed: bool) -> None:
         )
     try:
         client.login()
+        if client.token:
+            publisher.secrets.append(client.token)
         accounts = client.search_accounts(True)
         account = choose_account(accounts, config)
         journal.info(f"Account {account.id} {account.name} selected.")
@@ -101,6 +117,10 @@ def run_practice(config: BotConfig, armed: bool) -> None:
         journal.info(
             f"Contract {contract.get('id')} {contract.get('name')} {contract.get('description')}"
         )
+        publisher.account_name = account.name
+        publisher.contract_name = str(contract.get("name") or contract.get("id") or "")
+        publisher.balance = account.balance
+        publisher.publish(None, None, datetime.now(CHICAGO), force=True)
     except ProjectXError as exc:
         journal.error(str(exc))
         raise SystemExit(str(exc)) from exc
@@ -110,27 +130,45 @@ def run_practice(config: BotConfig, armed: bool) -> None:
     kill.clear_file()
     hub = None
     watcher = None
+    engine = None
     try:
         try:
             _reconcile_startup(broker, journal, config.runtime.flatten_on_start)
             # Replay does not search trades, flatten, or place. The contract and
             # account were resolved once above and are not looked up again.
             broker.orders_enabled = False
+            publisher.mode = "warming"
+            publisher.publish(None, broker, datetime.now(CHICAGO), force=True)
             history = _warmup_bars(client, contract["id"], config)
             journal.info(f"Loaded {len(history)} historical 1-minute bars for warmup.")
             engine = StrategyEngine(config, broker, journal, armed=False)
+            heartbeat = time.monotonic()
             for bar in history:
                 engine.on_minute(bar)
+                if time.monotonic() - heartbeat >= 2:
+                    publisher.publish(None, broker, datetime.now(CHICAGO))
+                    heartbeat = time.monotonic()
             broker.orders_enabled = True
+            publisher.mode = "connecting"
+            publisher.last_skip = ""
+            publisher.publish(engine, broker, datetime.now(CHICAGO), force=True)
             hub, quote_count = _await_live_quotes(
-                client, contract["id"], journal, config.runtime.quote_timeout_seconds
+                client,
+                contract["id"],
+                journal,
+                config.runtime.quote_timeout_seconds,
+                publisher=publisher,
+                engine=engine,
+                broker=broker,
             )
             decision = quote_gate(quote_count, cme_equity_index_open(datetime.now(CHICAGO)))
             if decision == "arm":
                 engine.armed = True
+                publisher.mode = "live"
                 journal.info("Live MES quote received. Entries are allowed inside the session window.")
             elif decision == "flat-open":
                 engine.armed = False
+                publisher.mode = "disconnected"
                 journal.error(
                     "No live MES quotes within "
                     f"{config.runtime.quote_timeout_seconds:g}s while the equity-index session is open. "
@@ -138,31 +176,41 @@ def run_practice(config: BotConfig, armed: bool) -> None:
                 )
             else:
                 engine.armed = False
+                publisher.mode = "live"
                 journal.info("MES session is closed and no quote arrived. Staying flat.")
+            publisher.publish(engine, broker, datetime.now(CHICAGO), force=True)
             watcher = _keyboard_watcher(kill)
             seen = {bar.time for bar in history}
             while True:
                 now = datetime.now(CHICAGO)
                 price = broker.last_price or (history[-1].close if history else 0)
                 if kill.execute(broker, price, now, journal):
+                    publisher.mode = "killed"
+                    publisher.publish(engine, broker, now, force=True)
                     journal.info("Kill switch flattened the account. Bot stopped.")
                     break
                 action = _poll_once(client, broker, engine, contract["id"], config, seen, now, journal)
+                publisher.publish(engine, broker, now, force=True)
                 if action == "flat":
                     break
                 time.sleep(config.runtime.poll_seconds)
         except ProjectXError as exc:
             _stop_for_api_failure(broker, journal, exc)
+            publisher.mode = "halted"
+            publisher.publish(engine, broker, datetime.now(CHICAGO), force=True)
     except KeyboardInterrupt:
         now = datetime.now(CHICAGO)
         price = broker.last_price or 0
         broker.orders_enabled = True
         kill.trip("Ctrl+C")
+        publisher.mode = "killed"
         try:
             kill.execute(broker, price, now, journal)
             journal.info("Ctrl+C flattened the account.")
         except ProjectXError as exc:
             _stop_for_api_failure(broker, journal, exc)
+            publisher.mode = "halted"
+        publisher.publish(engine, broker, now, force=True)
     finally:
         if hub is not None:
             stop = getattr(hub, "stop", None)
@@ -335,7 +383,15 @@ def _log_book(journal: Journal, positions: list | None, orders: list | None) -> 
             )
 
 
-def _await_live_quotes(client: ProjectXClient, contract_id: str, journal: Journal, timeout: float):
+def _await_live_quotes(
+    client: ProjectXClient,
+    contract_id: str,
+    journal: Journal,
+    timeout: float,
+    publisher: SessionPublisher | None = None,
+    engine=None,
+    broker=None,
+):
     """Connect to the market hub and wait until one quote arrives, or the timeout.
 
     Returns ``(hub, quote_count)``. The hub object is None when the handshake
@@ -343,8 +399,13 @@ def _await_live_quotes(client: ProjectXClient, contract_id: str, journal: Journa
     """
     quotes: list = []
 
-    def on_quote(*_args) -> None:
+    def on_quote(*args) -> None:
         quotes.append(1)
+        if publisher is None:
+            return
+        price = quote_price(args)
+        if price is not None:
+            publisher.note_quote(price, datetime.now(CHICAGO))
 
     def on_trade(*_args) -> None:
         return None
@@ -364,6 +425,8 @@ def _await_live_quotes(client: ProjectXClient, contract_id: str, journal: Journa
         if getattr(hub, "error", None) is not None:
             journal.error(f"Market hub closed ({type(hub.error).__name__}).")
             break
+        if publisher is not None:
+            publisher.publish(engine, broker, datetime.now(CHICAGO))
         time.sleep(0.2)
     journal.info(f"Quotes received during the wait: {len(quotes)}.")
     return hub, len(quotes)
