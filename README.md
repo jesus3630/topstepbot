@@ -178,6 +178,13 @@ Typing that does **not** make live API trading allowed by Topstep. Leave the lin
 
 Stay at the PC from 8:30 to 10:30 CT. Read the log. If anything looks wrong, stop it.
 
+The bot looks up your account and the MES contract once at startup, prints any open positions and working orders, and does not search for them again on every bar. If ProjectX answers HTTP 429 (too many requests) it waits, with a longer pause after each failure, and then tries the read again. If the failures keep going (5 in a row, or 30 seconds of them), it stops trading, prints the open positions and orders one time, and exits. It will not fill the terminal with the same error. After you pull this fix, confirm the account is flat in TopstepX and Auto OCO Brackets is on, then start again with:
+
+```bash
+source .venv/bin/activate
+python -m topstepbot practice --arm
+```
+
 ## How to stop it
 
 Any one of these cancels working orders and flattens:

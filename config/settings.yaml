@@ -167,6 +167,10 @@ runtime:
   # While MES is in session, practice mode stays flat unless a live quote
   # arrives within this many seconds.
   quote_timeout_seconds: 20
+  # Stop the session if ProjectX keeps failing. Five failures, or 30 seconds
+  # of failures, whichever comes first. The bot then prints the open book and exits.
+  api_max_consecutive_failures: 5
+  api_failure_window_seconds: 30
 
 broker:
   # Practice and Combine use the sim data subscription (live: false).

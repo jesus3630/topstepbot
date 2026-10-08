@@ -79,6 +79,8 @@ def run_practice(config: BotConfig, armed: bool) -> None:
         api_url=os.environ.get("PROJECTX_API_URL", "https://api.topstepx.com"),
         user_hub_url=os.environ.get("PROJECTX_USER_HUB_URL", "https://rtc.topstepx.com/hubs/user"),
         market_hub_url=os.environ.get("PROJECTX_MARKET_HUB_URL", "https://rtc.topstepx.com/hubs/market"),
+        max_consecutive_failures=config.runtime.api_max_consecutive_failures,
+        failure_window_seconds=config.runtime.api_failure_window_seconds,
     )
     journal = Journal(config.runtime.log_dir)
     journal.info(
@@ -104,70 +106,63 @@ def run_practice(config: BotConfig, armed: bool) -> None:
         raise SystemExit(str(exc)) from exc
 
     broker = ProjectXBroker(config, client, account, contract)
-    if config.runtime.flatten_on_start:
-        _flatten_leftovers(broker, journal)
-    history = _warmup_bars(client, contract["id"], config)
-    journal.info(f"Loaded {len(history)} historical 1-minute bars for warmup.")
-    # Warm up unarmed so a dead quote feed cannot place orders on replayed bars.
-    engine = StrategyEngine(config, broker, journal, armed=False)
-    for bar in history:
-        engine.on_minute(bar)
     kill = KillSwitch(config.runtime.kill_switch_file)
     kill.clear_file()
     hub = None
-    hub, quote_count = _await_live_quotes(client, contract["id"], journal, config.runtime.quote_timeout_seconds)
-    decision = quote_gate(quote_count, cme_equity_index_open(datetime.now(CHICAGO)))
-    if decision == "arm":
-        engine.armed = True
-        journal.info("Live MES quote received. Entries are allowed inside the session window.")
-    elif decision == "flat-open":
-        engine.armed = False
-        journal.error(
-            "No live MES quotes within "
-            f"{config.runtime.quote_timeout_seconds:g}s while the equity-index session is open. "
-            "Staying flat. No new orders."
-        )
-    else:
-        engine.armed = False
-        journal.info("MES session is closed and no quote arrived. Staying flat.")
-    watcher = _keyboard_watcher(kill)
-    seen = {bar.time for bar in history}
+    watcher = None
     try:
-        while True:
-            now = datetime.now(CHICAGO)
-            price = broker.last_price or (history[-1].close if history else 0)
-            if kill.execute(broker, price, now, journal):
-                journal.info("Kill switch flattened the account. Bot stopped.")
-                break
-            try:
-                fresh = client.retrieve_bars(
-                    contract["id"],
-                    now - timedelta(minutes=30),
-                    now,
-                    live=config.broker.projectx_use_live_data,
-                    include_partial=False,
-                )
-            except ProjectXError as exc:
-                journal.error(f"Bar poll failed: {exc}. Flattening and stopping.")
-                kill.trip("data feed unhealthy")
-                kill.execute(broker, price, now, journal)
-                break
-            new_bars = [bar for bar in fresh if bar.time not in seen and bar.time + timedelta(minutes=1) <= now]
-            for bar in new_bars:
-                seen.add(bar.time)
+        try:
+            _reconcile_startup(broker, journal, config.runtime.flatten_on_start)
+            # Replay does not search trades, flatten, or place. The contract and
+            # account were resolved once above and are not looked up again.
+            broker.orders_enabled = False
+            history = _warmup_bars(client, contract["id"], config)
+            journal.info(f"Loaded {len(history)} historical 1-minute bars for warmup.")
+            engine = StrategyEngine(config, broker, journal, armed=False)
+            for bar in history:
                 engine.on_minute(bar)
-                price = bar.close
-            engine.service(now, price)
-            if engine.day_flattened and engine.day.halt_reason == "session flatten":
-                journal.info("Session is flat. Bot is done for the day.")
-                break
-            time.sleep(config.runtime.poll_seconds)
+            broker.orders_enabled = True
+            hub, quote_count = _await_live_quotes(
+                client, contract["id"], journal, config.runtime.quote_timeout_seconds
+            )
+            decision = quote_gate(quote_count, cme_equity_index_open(datetime.now(CHICAGO)))
+            if decision == "arm":
+                engine.armed = True
+                journal.info("Live MES quote received. Entries are allowed inside the session window.")
+            elif decision == "flat-open":
+                engine.armed = False
+                journal.error(
+                    "No live MES quotes within "
+                    f"{config.runtime.quote_timeout_seconds:g}s while the equity-index session is open. "
+                    "Staying flat. No new orders."
+                )
+            else:
+                engine.armed = False
+                journal.info("MES session is closed and no quote arrived. Staying flat.")
+            watcher = _keyboard_watcher(kill)
+            seen = {bar.time for bar in history}
+            while True:
+                now = datetime.now(CHICAGO)
+                price = broker.last_price or (history[-1].close if history else 0)
+                if kill.execute(broker, price, now, journal):
+                    journal.info("Kill switch flattened the account. Bot stopped.")
+                    break
+                action = _poll_once(client, broker, engine, contract["id"], config, seen, now, journal)
+                if action == "flat":
+                    break
+                time.sleep(config.runtime.poll_seconds)
+        except ProjectXError as exc:
+            _stop_for_api_failure(broker, journal, exc)
     except KeyboardInterrupt:
         now = datetime.now(CHICAGO)
         price = broker.last_price or 0
+        broker.orders_enabled = True
         kill.trip("Ctrl+C")
-        kill.execute(broker, price, now, journal)
-        journal.info("Ctrl+C flattened the account.")
+        try:
+            kill.execute(broker, price, now, journal)
+            journal.info("Ctrl+C flattened the account.")
+        except ProjectXError as exc:
+            _stop_for_api_failure(broker, journal, exc)
     finally:
         if hub is not None:
             stop = getattr(hub, "stop", None)
@@ -176,7 +171,8 @@ def run_practice(config: BotConfig, armed: bool) -> None:
                     stop()
                 except Exception:
                     pass
-        watcher.join(timeout=0.2)
+        if watcher is not None:
+            watcher.join(timeout=0.2)
 
 
 def _resolve_contract(client: ProjectXClient, config: BotConfig) -> dict:
@@ -230,14 +226,113 @@ def _warmup_bars(client: ProjectXClient, contract_id: str, config: BotConfig) ->
     return deduped
 
 
-def _flatten_leftovers(broker: ProjectXBroker, journal: Journal) -> None:
-    now = datetime.now(CHICAGO)
+def _poll_once(client, broker, engine, contract_id: str, config: BotConfig, seen: set, now: datetime, journal: Journal) -> str:
+    """One live cycle: one bar fetch, one trade search, then any new minutes.
+
+    Trade/search is not inside the per-bar loop. API failures propagate so the
+    caller can stop. This function does not flatten just because a request failed.
+    """
+    fresh = client.retrieve_bars(
+        contract_id,
+        now - timedelta(minutes=30),
+        now,
+        live=config.broker.projectx_use_live_data,
+        include_partial=False,
+    )
+    price = broker.last_price or (fresh[-1].close if fresh else 0)
+    engine.service(now, price)
+    new_bars = [bar for bar in fresh if bar.time not in seen and bar.time + timedelta(minutes=1) <= now]
+    for bar in new_bars:
+        seen.add(bar.time)
+        engine.on_minute(bar)
+    if engine.day_flattened and engine.day.halt_reason == "session flatten":
+        journal.info("Session is flat. Bot is done for the day.")
+        return "flat"
+    return "continue"
+
+
+def _reconcile_startup(broker: ProjectXBroker, journal: Journal, flatten_on_start: bool) -> None:
+    """Print the open book once. Flatten once when config says to and something is open."""
     positions = broker.client.search_open_positions(broker.account.id)
-    relevant = [item for item in positions if str(item.get("contractId")) == broker.contract_id and int(item.get("size") or 0) > 0]
-    if not relevant:
+    orders = broker.client.search_open_orders(broker.account.id)
+    _log_book(journal, positions, orders)
+    if not flatten_on_start:
         return
-    journal.info("Open position found at startup. Flattening it before new entries.")
-    broker.flatten(broker.last_price or float(relevant[0].get("averagePrice") or 0), now)
+    open_positions = [
+        item
+        for item in positions
+        if str(item.get("contractId")) == broker.contract_id and int(item.get("size") or 0) > 0
+    ]
+    working = [item for item in orders if str(item.get("contractId")) == broker.contract_id]
+    if not open_positions and not working:
+        return
+    journal.info("Open position or working order found at startup. Flattening once before new entries.")
+    price = broker.last_price
+    if price is None and open_positions:
+        price = float(open_positions[0].get("averagePrice") or 0)
+    broker.flatten(price or 0, datetime.now(CHICAGO), reason="startup")
+
+
+def _stop_for_api_failure(broker: ProjectXBroker, journal: Journal, exc: BaseException) -> None:
+    """One message, one book check, then idle. No flatten retry and no spin."""
+    broker.orders_enabled = False
+    fold = getattr(broker, "_errors", None)
+    if fold is not None:
+        fold.flush()
+    journal.error(
+        "API errors persisted. Trading stopped. "
+        f"{exc} "
+        "No more orders will be sent."
+    )
+    _report_book_once(broker, journal)
+
+
+def _report_book_once(broker: ProjectXBroker, journal: Journal) -> None:
+    allow = getattr(broker.client, "allow_halt_probe", None)
+    if callable(allow):
+        allow(2)
+    try:
+        positions = broker.client.search_open_positions(broker.account.id)
+    except ProjectXError as exc:
+        journal.error(f"Could not list open positions: {exc}")
+        positions = None
+    except Exception as exc:
+        journal.error(f"Could not list open positions: {type(exc).__name__}")
+        positions = None
+    try:
+        orders = broker.client.search_open_orders(broker.account.id)
+    except ProjectXError as exc:
+        journal.error(f"Could not list open orders: {exc}")
+        orders = None
+    except Exception as exc:
+        journal.error(f"Could not list open orders: {type(exc).__name__}")
+        orders = None
+    _log_book(journal, positions, orders)
+
+
+def _log_book(journal: Journal, positions: list | None, orders: list | None) -> None:
+    if positions is None:
+        pass
+    elif not positions:
+        journal.info("No open positions.")
+    else:
+        for position in positions:
+            journal.info(
+                "Open position "
+                f"contract={position.get('contractId')} size={position.get('size')} "
+                f"average={position.get('averagePrice')}"
+            )
+    if orders is None:
+        pass
+    elif not orders:
+        journal.info("No working orders.")
+    else:
+        for order in orders:
+            journal.info(
+                "Working order "
+                f"id={order.get('id')} contract={order.get('contractId')} "
+                f"type={order.get('type')} side={order.get('side')} size={order.get('size')}"
+            )
 
 
 def _await_live_quotes(client: ProjectXClient, contract_id: str, journal: Journal, timeout: float):

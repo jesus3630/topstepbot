@@ -26,6 +26,13 @@ Bracket mode: the account must be set to Auto OCO Brackets in TopstepX
 (Settings > Risk Settings). In Position Brackets mode the API rejects bracket
 fields and, per the docs, still creates the order. This client cancels that
 order id immediately.
+
+Rate limits (https://gateway.docs.projectx.com/docs/getting-started/rate-limits/):
+retrieveBars is 50 calls per 30 seconds and every other route is 200 calls
+per 60 seconds. This client waits for a free slot, backs off on HTTP 429,
+honors a numeric Retry-After, and raises ApiHalted instead of retrying forever.
+Order/place is not retried after a 429, because a second post can duplicate
+the order. Reads such as Trade/search are retried until the halt threshold.
 """
 
 from __future__ import annotations
@@ -39,6 +46,13 @@ from typing import Callable
 import requests
 
 from topstepbot.broker.base import ProtectiveStopRequired
+from topstepbot.broker.ratelimit import (
+    HISTORY_LIMIT,
+    OTHER_LIMIT,
+    ErrorFold,
+    RateHalt,
+    SlidingWindowLimiter,
+)
 from topstepbot.config import BotConfig
 from topstepbot.models import AccountInfo, Bar, BracketLeg, Fill, Side
 
@@ -60,6 +74,21 @@ class ProjectXError(RuntimeError):
         self.error_code = error_code
 
 
+class ApiHalted(ProjectXError):
+    """Rate limits or API errors persisted. Callers must stop, not retry in a loop."""
+
+
+# Sending these again after HTTP 429 can duplicate a fill. Reads are retried; these are not.
+_NO_RETRY_PATHS = frozenset(
+    {
+        "/api/Order/place",
+        "/api/Order/modify",
+        "/api/Position/closeContract",
+        "/api/Position/partialCloseContract",
+    }
+)
+
+
 class ProjectXClient:
     def __init__(
         self,
@@ -69,6 +98,14 @@ class ProjectXClient:
         user_hub_url: str = "https://rtc.topstepx.com/hubs/user",
         market_hub_url: str = "https://rtc.topstepx.com/hubs/market",
         session: requests.Session | None = None,
+        *,
+        clock: Callable[[], float] | None = None,
+        sleep: Callable[[float], None] | None = None,
+        jitter: Callable[[], float] | None = None,
+        history_limit: tuple[int, float] = HISTORY_LIMIT,
+        other_limit: tuple[int, float] = OTHER_LIMIT,
+        max_consecutive_failures: int = 5,
+        failure_window_seconds: float = 30.0,
     ) -> None:
         if not username or not api_key:
             raise ProjectXError("PROJECTX_USERNAME and PROJECTX_API_KEY are required")
@@ -80,6 +117,16 @@ class ProjectXClient:
         self.http = session or requests.Session()
         self.token: str | None = None
         self.token_acquired_at: datetime | None = None
+        self._sleep = sleep or time.sleep
+        self.limiter = SlidingWindowLimiter(
+            history_limit=history_limit,
+            other_limit=other_limit,
+            clock=clock or time.monotonic,
+            sleep=self._sleep,
+            jitter=jitter,
+            max_consecutive=max_consecutive_failures,
+            failure_window=float(failure_window_seconds),
+        )
 
     def login(self) -> None:
         # The body contains the API key. It is never logged.
@@ -195,6 +242,8 @@ class ProjectXClient:
             log.error("Order %s was rejected (%s). Cancelling it so it cannot rest without a stop.", order_id, message)
             try:
                 self.cancel_order(int(payload["accountId"]), int(order_id))
+            except ApiHalted:
+                raise
             except ProjectXError as exc:
                 log.error("Could not cancel rejected order %s: %s", order_id, exc)
         raise ProjectXError(message, body.get("errorCode") if isinstance(body.get("errorCode"), int) else None)
@@ -295,24 +344,68 @@ class ProjectXClient:
         hub.start()
         return hub
 
+    def allow_halt_probe(self, count: int = 2) -> None:
+        """After a halt, allow a few reads so the open book can be printed once."""
+        self.limiter.allow_halt_probe(count)
+
     def _post(self, path: str, payload: dict, auth: bool = True) -> dict:
-        if auth and (self.token is None or self._token_is_old()):
-            # login() posts with auth=False, so this does not recurse.
-            # The API key stays in that body and is not logged.
-            self.token = None
-            self.login()
+        if self.limiter.halted:
+            return self._probe(path, payload, auth)
+        refreshed = False
+        while True:
+            if auth and (self.token is None or self._token_is_old()):
+                # login() posts with auth=False, so this does not recurse.
+                # The API key stays in that body and is not logged.
+                self.token = None
+                self.login()
+            self._acquire(path)
+            response = self._send(f"{self.api_url}{path}", payload, self._headers(auth))
+            if response.status_code == 401 and auth and not refreshed:
+                refreshed = True
+                self.token = None
+                self.login()
+                continue
+            if response.status_code == 429 or response.status_code >= 500:
+                delay = self._backoff(response)
+                if path in _NO_RETRY_PATHS:
+                    # A retry can create a second order. Wait, then stop this call.
+                    self._sleep(delay)
+                    raise ProjectXError(
+                        f"ProjectX HTTP {response.status_code} on {path}. The request was not retried."
+                    )
+                self._sleep(delay)
+                continue
+            self.limiter.note_success()
+            return self._parse(response, path)
+
+    def _probe(self, path: str, payload: dict, auth: bool) -> dict:
+        if not self.limiter.consume_probe():
+            raise ApiHalted(self.limiter.halt_reason or "ProjectX API halted. Trading stopped.")
+        response = self._send(f"{self.api_url}{path}", payload, self._headers(auth))
+        if response.status_code >= 400:
+            raise ProjectXError(f"ProjectX HTTP {response.status_code} on {path}")
+        return self._parse(response, path)
+
+    def _acquire(self, path: str) -> None:
+        try:
+            self.limiter.before_request(path)
+        except RateHalt as exc:
+            raise ApiHalted(str(exc)) from exc
+
+    def _backoff(self, response: requests.Response) -> float:
+        try:
+            return self.limiter.note_failure(_retry_after(response))
+        except RateHalt as exc:
+            raise ApiHalted(str(exc)) from exc
+
+    def _headers(self, auth: bool) -> dict:
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
         if auth and self.token:
             headers["Authorization"] = f"Bearer {self.token}"
-        url = f"{self.api_url}{path}"
-        response = self._send(url, payload, headers)
-        if response.status_code == 401 and auth:
-            self.token = None
-            self.login()
-            headers["Authorization"] = f"Bearer {self.token}"
-            response = self._send(url, payload, headers)
-        if response.status_code == 429:
-            raise ProjectXError("ProjectX rate limit (HTTP 429). Back off and try again.")
+        return headers
+
+    @staticmethod
+    def _parse(response: requests.Response, path: str) -> dict:
         if response.status_code >= 400:
             raise ProjectXError(f"ProjectX HTTP {response.status_code} on {path}")
         try:
@@ -425,6 +518,22 @@ def pick_front_month(contracts: list[dict], symbol: str = "MES") -> dict:
     return chosen[0]
 
 
+def _retry_after(response: requests.Response) -> float | None:
+    headers = getattr(response, "headers", None)
+    getter = getattr(headers, "get", None)
+    if not callable(getter):
+        return None
+    raw = getter("Retry-After")
+    if raw is None:
+        raw = getter("retry-after")
+    if raw is None or raw == "":
+        return None
+    try:
+        return max(0.0, float(str(raw).strip()))
+    except (TypeError, ValueError):
+        return None
+
+
 def _iso(moment: datetime) -> str:
     if moment.tzinfo is None:
         raise ProjectXError("timestamps sent to ProjectX must include a timezone")
@@ -454,8 +563,13 @@ class ProjectXBroker:
         self._seq = 0
         self._seen_trades: set[int] = set()
         self._trade_cursor = datetime.now(timezone.utc) - timedelta(minutes=5)
+        # Historical warmup sets this false so a replayed 10:30 flatten cannot hit the API.
+        self.orders_enabled = True
+        self._errors = ErrorFold(lambda message: log.error("%s", message))
 
     def place_brackets(self, legs: list[BracketLeg]) -> list[str]:
+        if not self.orders_enabled:
+            raise ProjectXError("Orders are suspended. Refusing to place brackets.")
         ids = []
         for index, leg in enumerate(legs):
             if index > 0:
@@ -487,15 +601,24 @@ class ProjectXBroker:
         return ids
 
     def on_bar(self, bar: Bar) -> list[Fill]:
+        """Remember the price. Fills come from poll(), once per live cycle.
+
+        Calling Trade/search here walked every historical warmup minute and
+        produced the HTTP 429 flood. The paper broker still fills inside on_bar.
+        """
         self.last_price = bar.close
-        return self.poll(bar.time)
+        return []
 
     def poll(self, when: datetime) -> list[Fill]:
-        """Turn new Trade/search rows into fills. Idempotent."""
+        """Turn new Trade/search rows into fills. Idempotent. One call per live cycle."""
+        if not self.orders_enabled:
+            return []
         try:
             trades = self.client.search_trades(self.account.id, self._trade_cursor, when.astimezone(timezone.utc))
+        except ApiHalted:
+            raise
         except ProjectXError as exc:
-            log.error("Trade search failed: %s", exc)
+            self._errors.report(f"Trade search failed: {exc}")
             return []
         fills: list[Fill] = []
         for trade in trades:
@@ -513,18 +636,24 @@ class ProjectXBroker:
         return fills
 
     def cancel_all(self) -> None:
+        if not self.orders_enabled:
+            return
         try:
             orders = self.client.search_open_orders(self.account.id)
+        except ApiHalted:
+            raise
         except ProjectXError as exc:
-            log.error("Could not list open orders: %s", exc)
+            self._errors.report(f"Could not list open orders: {exc}")
             orders = []
         for order in orders:
             if str(order.get("contractId")) != self.contract_id:
                 continue
             try:
                 self.client.cancel_order(self.account.id, int(order["id"]))
+            except ApiHalted:
+                raise
             except ProjectXError as exc:
-                log.error("Cancel %s failed: %s", order.get("id"), exc)
+                self._errors.report(f"Cancel {order.get('id')} failed: {exc}")
         for group in self._groups.values():
             if not group["entry_filled"] and not group["closed"]:
                 group["closed"] = True
@@ -532,13 +661,17 @@ class ProjectXBroker:
 
     def flatten(self, price: float, when: datetime, reason: str = "flatten") -> list[Fill]:
         self.last_price = price
+        if not self.orders_enabled:
+            return []
         log.info("Flatten requested (%s)", reason)
         # Cancel working orders even when the close call fails.
         close_error: ProjectXError | None = None
         try:
             positions = self.client.search_open_positions(self.account.id)
+        except ApiHalted:
+            raise
         except ProjectXError as exc:
-            log.error("Position search failed during flatten: %s", exc)
+            self._errors.report(f"Position search failed during flatten: {exc}")
             positions = []
         for position in positions:
             if str(position.get("contractId")) != self.contract_id:
@@ -547,8 +680,10 @@ class ProjectXBroker:
                 continue
             try:
                 self.client.close_contract(self.account.id, self.contract_id)
+            except ApiHalted:
+                raise
             except ProjectXError as exc:
-                log.error("Close position failed: %s", exc)
+                self._errors.report(f"Close position failed: {exc}")
                 close_error = exc
         self.cancel_all()
         fills = self.poll(when)
@@ -557,6 +692,8 @@ class ProjectXBroker:
         return fills
 
     def modify_stop(self, group_id: str, new_stop: float) -> bool:
+        if not self.orders_enabled:
+            return False
         group = self._groups.get(group_id)
         if group is None or group["closed"] or group["qty_open"] <= 0:
             return False
@@ -642,6 +779,8 @@ class ProjectXBroker:
         return group["stop_price"]
 
     def cancel_entry(self, group_id: str) -> bool:
+        if not self.orders_enabled:
+            return False
         group = self._groups.get(group_id)
         if group is None or group["entry_filled"] or group["closed"]:
             return False

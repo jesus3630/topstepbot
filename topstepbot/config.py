@@ -147,6 +147,8 @@ class RuntimeConfig:
     poll_seconds: int
     flatten_on_start: bool
     quote_timeout_seconds: int
+    api_max_consecutive_failures: int
+    api_failure_window_seconds: int
 
 
 @dataclass(frozen=True)
@@ -314,6 +316,8 @@ def _build(data: dict, source: str) -> BotConfig:
             poll_seconds=int(runtime["poll_seconds"]),
             flatten_on_start=bool(runtime["flatten_on_start"]),
             quote_timeout_seconds=int(runtime.get("quote_timeout_seconds", 20)),
+            api_max_consecutive_failures=int(runtime.get("api_max_consecutive_failures", 5)),
+            api_failure_window_seconds=int(runtime.get("api_failure_window_seconds", 30)),
         ),
         broker=BrokerConfig(
             projectx_use_live_data=bool(broker["projectx_use_live_data"]),
@@ -344,6 +348,10 @@ def _validate(cfg: BotConfig) -> None:
         raise ValueError("max_contracts exceeds the Topstep position cap in config")
     if not 0 < cfg.exits.partial_fraction <= 1:
         raise ValueError("partial_fraction must be between 0 and 1")
+    if cfg.runtime.api_max_consecutive_failures < 1:
+        raise ValueError("api_max_consecutive_failures must be at least 1")
+    if cfg.runtime.api_failure_window_seconds < 1:
+        raise ValueError("api_failure_window_seconds must be at least 1")
     if cfg.compliance.min_seconds_between_orders < 1:
         raise ValueError("minimum order interval must be at least 1 second")
     if cfg.compliance.min_hold_seconds < 1:

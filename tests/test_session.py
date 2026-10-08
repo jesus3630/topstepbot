@@ -29,6 +29,8 @@ def test_agreed_settings_live_in_the_config_file():
     assert CONFIG.session.flatten_time.hour == 10 and CONFIG.session.flatten_time.minute == 30
     assert CONFIG.runtime.armed is False
     assert CONFIG.runtime.quote_timeout_seconds == 20
+    assert CONFIG.runtime.api_max_consecutive_failures == 5
+    assert CONFIG.runtime.api_failure_window_seconds == 30
     assert CONFIG.account.kind == "combine"
     assert CONFIG.account.account_name_contains == "50KTC"
     assert CONFIG.instrument.tick_size == 0.25
