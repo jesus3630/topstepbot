@@ -11,6 +11,8 @@ KILL
 ARM
 data/downloads/
 data/mes_1m_real.csv
+data/mes_1m_databento.csv
+data/*databento*.csv
 data/es_f_*.csv
 data/*.csv.tmp
 dist/

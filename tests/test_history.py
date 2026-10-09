@@ -220,8 +220,11 @@ def test_contract_expiry_and_front_month_stitch():
         ]
     )
     assert [bar.close for bar in bars] == [10, 40]
+    assert [bar.contract for bar in bars] == ["MESU6", "MESZ6"]
     assert "front month" in note
     assert "Roll" in note
+    assert "not back-adjusted" in note
+    assert parse_contract_expiry("MESU4:42001234", 2026) == datetime(2024, 9, 15).date()
 
 
 def test_history_report_states_combine_stats_without_editing_settings(tmp_path):

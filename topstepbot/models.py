@@ -34,6 +34,8 @@ class Bar:
     low: float
     close: float
     volume: float
+    # Empty on live bars. A change between non-empty values is a contract roll.
+    contract: str = ""
 
     def __post_init__(self) -> None:
         if self.time.tzinfo is None:

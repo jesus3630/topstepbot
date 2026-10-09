@@ -170,6 +170,33 @@ python -m topstepbot history-report --csv data/mes_1m_real.csv
 
 That replays the live strategy with the paper broker's costs (1 tick of slippage on the entry and again on the exit, plus the config fee of $1.40 per contract round turn). The fee is still the placeholder. The report splits the first two thirds of sessions from the last third, compares drawdown with the $2,000 trailing maximum loss and the $1,000 daily loss limit, counts sessions to a $3,000 target, and checks the 40% consistency rule. It also says, for each filter, how many breakouts it blocked and what those blocked trades returned. A later section replays five entry definitions that were written down in advance (the live 2-tick retest, an 8-tick retest, a retest of 0.25 times the opening-range width, a breakout-close entry with the stop at the range midpoint, and a retest whose stop sits beyond the pullback swing). Those runs are not saved. It does not change `config/settings.yaml`. The text is printed and saved to `logs/history-report.txt`.
 
+## Long history from Databento
+
+ProjectX has only been returning the current MES contract (about two months). Databento's CME dataset goes back through the 2019 MES launch. New accounts get a credit. Put the key in `.env` on the Mac as `DATABENTO_API_KEY`. The command never prints that value.
+
+```bash
+cd /Users/heyzeus/topstepbot
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m topstepbot fetch-databento --start 2019-05-01 --out data/mes_1m_databento.csv
+```
+
+Before any bars are downloaded, the command calls Databento `metadata.get_cost` and prints the exact price in US dollars. If that price is above $20, it stops and writes nothing. Pass `--yes` to download anyway, or raise the cap with `--max-cost 40`. A date is midnight UTC, and the end is exclusive. The CSV timestamps are Central time. Columns match `fetch-history`: `timestamp,open,high,low,close,volume,contract`.
+
+The symbol is `MES.v.0` on dataset `GLBX.MDP3`, schema `ohlcv-1m`, continuous symbology. The `v` rule is the front month by the previous day's volume. `MES.c.0` follows the calendar expiry and can stay on a quiet month after the volume has moved, so it is not used. `MES.n.0` would rank by open interest. Prices are the original outright prints. Databento does not back-adjust them, so a roll is a real gap. The contract column is the outright symbol plus the instrument id (`MESU4:12345`). An instrument id is only unique within one day, which is why both are stored. A continuous symbol can only be resolved to an instrument id; the outright name comes from a free symbology lookup.
+
+If the command stops, run it again with the same `--out`. Bars already in the file are kept, and the next cost quote is only for the remaining span. The file is large. It is gitignored. Do not commit it.
+
+Then:
+
+```bash
+python -m topstepbot history-report --csv data/mes_1m_databento.csv
+```
+
+When the contract column changes, the replay closes any open paper position at the old contract's last price and starts the EMA, ATR, VWAP, swings, and the opening range over. Prior-day levels from the old outright are not carried onto the new price. Equity and the trailing max-loss floor are not reset. Live bars leave the contract blank, so this does not change the live bot. `config/settings.yaml` is not changed.
+
+A pip dry-run for CPython 3.14 on macOS (Apple silicon and Intel) installs `databento` 0.87.0 with `databento-dbn` 0.70.0, pandas, numpy, and pyarrow (checked 2026-10-09). Python 3.14 support in the client started at 0.68.0. This command only reads history. It cannot place an order.
+
 ## Run in paper mode
 
 Paper mode replays a CSV through a simulated account. Nothing is sent to Topstep. You still have to arm it, so a double-click does not trade by surprise:
@@ -336,9 +363,11 @@ If a bracket is rejected because the account is in Position Brackets mode, the d
 | `topstepbot/broker/projectx.py` | ProjectX gateway client (can send orders) |
 | `topstepbot/broker/readonly.py` | Read-only client used by `check` and `fetch-history` |
 | `topstepbot/historyfetch.py` | Resume-safe MES history download. Cannot place orders |
+| `topstepbot/databentofetch.py` | Databento MES history (`MES.v.0`). Cost check before download |
 | `topstepbot/historyreport.py` | Strategy report on a real CSV. Does not change settings |
 | `data/sample_mes_1m_synthetic.csv` | Fake bars so the backtest runs immediately |
 | `data/mes_1m_real.csv` | Created on the Mac by `fetch-history`. Gitignored |
+| `data/mes_1m_databento.csv` | Created on the Mac by `fetch-databento`. Gitignored |
 | `tests/` | Unit tests |
 
 ```bash

@@ -74,6 +74,25 @@ def main(argv: list[str] | None = None) -> int:
     history.add_argument("--out", default="logs/history-report.txt")
     history.add_argument("--label", default="", help="Optional first line, for a preliminary public-data file.")
 
+    fetch_db = sub.add_parser(
+        "fetch-databento",
+        help="Download long MES 1-minute history from Databento. Cannot place orders.",
+    )
+    fetch_db.add_argument("--start", required=True, help="First day as a UTC date, for example 2019-05-01.")
+    fetch_db.add_argument("--end", default="", help="Exclusive UTC end date. Default is the latest available bar.")
+    fetch_db.add_argument("--out", default="data/mes_1m_databento.csv")
+    fetch_db.add_argument(
+        "--max-cost",
+        type=float,
+        default=20.0,
+        help="Abort before downloading if metadata.get_cost is above this many US dollars (default 20).",
+    )
+    fetch_db.add_argument(
+        "--yes",
+        action="store_true",
+        help="Download even when the quoted cost is above --max-cost.",
+    )
+
     args = parser.parse_args(argv)
     config = load_config(args.config)
     armed = bool(config.runtime.armed or getattr(args, "arm", False))
@@ -112,6 +131,17 @@ def main(argv: list[str] | None = None) -> int:
         from topstepbot.historyreport import write_history_report
 
         print(write_history_report(config, args.csv, out=args.out, label=args.label))
+        return 0
+    if args.command == "fetch-databento":
+        from topstepbot.databentofetch import fetch_databento
+
+        fetch_databento(
+            start=args.start,
+            end=args.end or None,
+            out=args.out,
+            max_cost=args.max_cost,
+            yes=args.yes,
+        )
         return 0
     return 1
 

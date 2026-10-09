@@ -168,12 +168,16 @@ class StrategyEngine:
         self._rth_stats: dict[date, list[float]] = {}
         self._overnight_stats: dict[date, list[float]] = {}
         self._london_stats: dict[date, list[float]] = {}
+        # Live bars leave contract blank, so this never fires on the live bot.
+        self._series_contract = ""
+        self._price_origin = 0
         self.daily_pnl: dict[date, float] = {}
         self.daily_mtm_low: dict[date, float] = {}
         self._plan_logged = False
         self._tag = 0
 
     def on_minute(self, bar: Bar) -> None:
+        self._roll_contract_if_needed(bar)
         self._roll_session_if_needed(bar)
         self.minutes.append(bar)
         self._absorb_level_bar(bar)
@@ -236,6 +240,56 @@ class StrategyEngine:
             ending_equity=equity,
         )
 
+    def _roll_contract_if_needed(self, bar: Bar) -> None:
+        """Drop price state when the outright contract changes.
+
+        Databento continuous prices are not back-adjusted, so an EMA, VWAP,
+        or opening range that crosses the roll is a mix of two markets.
+        Equity, the daily loss count, and the trailing max-loss floor stay.
+        An open paper position is closed at the old contract's last price.
+        """
+        name = bar.contract.strip()
+        if not name:
+            return
+        previous = self._series_contract
+        if not previous:
+            self._series_contract = name
+            return
+        if name == previous:
+            return
+        if self.minutes and (self.broker.net_qty() != 0 or self.broker.working_entry_count()):
+            last = self.minutes[-1]
+            self._flatten(last.close, last.time, "contract roll")
+            # Session roll on this same bar archives day.realized. Count the
+            # old-contract fill before that archive, or the dollars disappear.
+            self._sync_pnl(last.close)
+        self.bars_5 = []
+        self.aggregator = BarAggregator(self.config.filters.signal_timeframe_minutes, self.config.session.timezone)
+        self._ind_n = 0
+        self._ema = []
+        self._atr = []
+        self._trs = []
+        self._swing_high = []
+        self._swing_low = []
+        self._rth_stats = {}
+        self._overnight_stats = {}
+        self._london_stats = {}
+        self.pending = []
+        self.opening = None
+        self.opening_frozen = False
+        self.levels = []
+        self.vwap = None
+        self._vwap_pv = 0.0
+        self._vwap_vol = 0.0
+        self._vwap_key = None
+        self.cooldown_until = {Side.LONG: -1, Side.SHORT: -1}
+        self._price_origin = len(self.minutes)
+        self._series_contract = name
+        self.journal.info(
+            f"ROLL contract {previous} to {name}. Indicators and the opening range start over. "
+            "Prices are not back-adjusted."
+        )
+
     def _roll_session_if_needed(self, bar: Bar) -> None:
         day = session_date(bar.time, self.config.session)
         if self.session_day is None:
@@ -286,7 +340,7 @@ class StrategyEngine:
         if local.time() < self.config.session.opening_range_end:
             return
         found = opening_range_from_bars(
-            self.minutes,
+            self.minutes[self._price_origin :],
             self.session_day,
             self.config.session.timezone,
             self.config.session.rth_open,

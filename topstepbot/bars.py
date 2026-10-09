@@ -41,6 +41,7 @@ def load_bars(path: str | Path, tz_name: str = "America/Chicago") -> list[Bar]:
                 low=float(lowered["low"]),
                 close=float(lowered["close"]),
                 volume=float(lowered["volume"]),
+                contract=(lowered.get("contract") or "").strip(),
             )
         )
     bars.sort(key=lambda bar: bar.time)
@@ -119,6 +120,7 @@ class BarAggregator:
     def _finish(self) -> Bar:
         parts = self._parts
         assert self._bucket is not None
+        names = {part.contract for part in parts}
         return Bar(
             time=self._bucket,
             open=parts[0].open,
@@ -126,6 +128,7 @@ class BarAggregator:
             low=min(part.low for part in parts),
             close=parts[-1].close,
             volume=sum(part.volume for part in parts),
+            contract=parts[-1].contract if len(names) == 1 else "",
         )
 
 

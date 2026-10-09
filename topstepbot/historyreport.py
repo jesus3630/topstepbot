@@ -10,7 +10,7 @@ import csv
 import logging
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -34,6 +34,10 @@ CONSISTENCY_CAP = 0.40
 RETEST_WHAT_IF_TICKS = 8
 _CODE_MONTH = {"H": 3, "M": 6, "U": 9, "Z": 12}
 _CONTRACT_RE = re.compile(r"(?:^MES\.|^MES)([HMUZ])(\d{1,2})$", re.IGNORECASE)
+_UNADJUSTED = (
+    " Prices are the outright prints, not back-adjusted. "
+    "Indicators, VWAP, and the opening range start over when the contract changes."
+)
 
 
 @dataclass(frozen=True)
@@ -94,6 +98,7 @@ def load_labeled_bars(path: str | Path, tz_name: str = "America/Chicago") -> lis
                     low=float(lowered["low"]),
                     close=float(lowered["close"]),
                     volume=float(lowered["volume"]),
+                    contract=(lowered.get("contract") or "").strip(),
                 ),
                 (lowered.get("contract") or "").strip(),
             )
@@ -104,9 +109,11 @@ def load_labeled_bars(path: str | Path, tz_name: str = "America/Chicago") -> lis
 
 def parse_contract_expiry(name: str, hint_year: int) -> date | None:
     """Month-code expiry, using the 15th as a stand-in for the real roll day."""
-    match = _CONTRACT_RE.search(name.strip().upper())
+    # Databento rows look like MESU4:12345. The id is not part of the month code.
+    head = name.strip().upper().split(":", 1)[0]
+    match = _CONTRACT_RE.search(head)
     if match is None:
-        dotted = name.strip().upper().split(".")
+        dotted = head.split(".")
         if len(dotted) >= 2:
             match = _CONTRACT_RE.search("MES" + dotted[-1])
     if match is None:
@@ -145,6 +152,7 @@ def stitch_front_month(rows: list[_LabeledBar]) -> tuple[list[Bar], str]:
         return bars, (
             f"Could not read a quarter code from the contract names ({shown}). "
             "The bars were kept in time order as one series. A same-minute overlap keeps one bar."
+            + _UNADJUSTED
         )
     by_minute: dict[datetime, list[_LabeledBar]] = {}
     for item in rows:
@@ -163,7 +171,7 @@ def stitch_front_month(rows: list[_LabeledBar]) -> tuple[list[Bar], str]:
             pick = max(dated, key=lambda pair: pair[0])[1]
         else:
             pick = undated[0]
-        chosen.append((pick.bar, pick.contract))
+        chosen.append((replace(pick.bar, contract=pick.contract), pick.contract))
     bars = [bar for bar, _name in chosen]
     rolls = _roll_notes(chosen)
     used = ", ".join(name or "unlabeled" for name in names)
@@ -172,6 +180,7 @@ def stitch_front_month(rows: list[_LabeledBar]) -> tuple[list[Bar], str]:
         f"as the expiry stand-in ({used}). "
     )
     note += rolls or "The front month did not change inside the file."
+    note += _UNADJUSTED
     return bars, note
 
 
@@ -179,7 +188,7 @@ def _dedupe_minutes(rows: list[_LabeledBar]) -> list[Bar]:
     kept: dict[datetime, Bar] = {}
     for item in rows:
         minute = item.bar.time.astimezone(CHICAGO).replace(second=0, microsecond=0)
-        kept[minute] = item.bar
+        kept[minute] = replace(item.bar, contract=item.contract)
     return [kept[key] for key in sorted(kept)]
 
 
@@ -599,6 +608,38 @@ def _trade_key(trade: ClosedTrade) -> tuple:
     return (trade.session_date, trade.entry_time, trade.side, trade.setup, round(trade.entry_price, 2))
 
 
+def opening_contract(
+    bars: list[Bar],
+    session: date,
+    tz_name: str,
+    rth_open: time,
+    range_end: time,
+) -> str:
+    """Contract of the last 08:30-08:45 bar. Empty when the file has no contract column."""
+    start_m = rth_open.hour * 60 + rth_open.minute
+    end_m = range_end.hour * 60 + range_end.minute
+    active = ""
+    for bar in bars:
+        local = bar.time.astimezone(ZoneInfo(tz_name))
+        minute = local.hour * 60 + local.minute
+        if local.date() == session and start_m <= minute < end_m and bar.contract.strip():
+            active = bar.contract.strip()
+    return active
+
+
+def _opening_on_one_contract(
+    bars: list[Bar],
+    session: date,
+    tz_name: str,
+    rth_open: time,
+    range_end: time,
+):
+    """Opening range from one outright. A roll inside 08:30-08:45 keeps the later contract."""
+    active = opening_contract(bars, session, tz_name, rth_open, range_end)
+    chosen = bars if not active else [bar for bar in bars if bar.contract.strip() == active]
+    return opening_range_from_bars(chosen, session, tz_name, rth_open, range_end)
+
+
 def _morning_lines(config: BotConfig, bars: list[Bar]) -> list[str]:
     session = config.session
     tick = config.instrument.tick_size
@@ -607,7 +648,16 @@ def _morning_lines(config: BotConfig, bars: list[Bar]) -> list[str]:
         by_day.setdefault(session_date(bar.time, session), []).append(bar)
     aggregator = BarAggregator(config.filters.signal_timeframe_minutes, session.timezone)
     signal: list[Bar] = []
+    previous_contract = ""
     for bar in bars:
+        name = bar.contract.strip()
+        if previous_contract and name and name != previous_contract:
+            finished = aggregator.flush()
+            if finished is not None:
+                signal.append(finished)
+            aggregator = BarAggregator(config.filters.signal_timeframe_minutes, session.timezone)
+        if name:
+            previous_contract = name
         finished = aggregator.add(bar)
         if finished is not None:
             signal.append(finished)
@@ -626,7 +676,7 @@ def _morning_lines(config: BotConfig, bars: list[Bar]) -> list[str]:
     entry_start = _minutes(session.entry_start)
     flatten = _minutes(session.flatten_time)
     for day, day_bars in sorted(by_day.items()):
-        opening = opening_range_from_bars(
+        opening = _opening_on_one_contract(
             day_bars, day, session.timezone, session.rth_open, session.opening_range_end
         )
         if opening is None or tick <= 0:
@@ -634,6 +684,9 @@ def _morning_lines(config: BotConfig, bars: list[Bar]) -> list[str]:
         with_range += 1
         widths.append((opening.high - opening.low) / tick)
         day_signal = [bar for bar in signal if session_date(bar.time, session) == day]
+        active = opening_contract(day_bars, day, session.timezone, session.rth_open, session.opening_range_end)
+        if active:
+            day_signal = [bar for bar in day_signal if bar.contract == active]
         window = [
             bar
             for bar in day_signal
