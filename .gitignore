@@ -10,6 +10,9 @@ logs/
 KILL
 ARM
 data/downloads/
+data/mes_1m_real.csv
+data/es_f_*.csv
+data/*.csv.tmp
 dist/
 *.egg-info/
 .DS_Store

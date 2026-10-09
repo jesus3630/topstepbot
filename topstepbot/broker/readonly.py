@@ -20,7 +20,7 @@ from typing import Callable
 
 import requests
 
-from topstepbot.broker.projectx import ProjectXError
+from topstepbot.broker.projectx import ProjectXError, _retry_after
 from topstepbot.models import AccountInfo
 
 # Exact paths. Anything else, including /api/Order/place, is refused.
@@ -68,6 +68,8 @@ class ReadOnlyProjectXClient:
         self.market_hub_url = market_hub_url
         self.http = session or requests.Session()
         self.token: str | None = None
+        # Set from a numeric Retry-After when History/retrieveBars returns HTTP 429.
+        self.last_retry_after: float | None = None
         # Tests inject a hub factory. Production uses the JSON SignalR client.
         self._hub_factory: Callable[[ReadOnlyProjectXClient], object] | None = None
         self._signalr_connector: Callable | None = None
@@ -213,6 +215,7 @@ class ReadOnlyProjectXClient:
             # The bearer token is only in the header, which requests does not put in the message.
             raise ProjectXError(f"ProjectX request failed on {path} ({type(exc).__name__})") from exc
         if response.status_code == 429:
+            self.last_retry_after = _retry_after(response)
             raise ProjectXError("ProjectX rate limit (HTTP 429). Back off and try again.")
         if response.status_code >= 400:
             raise ProjectXError(f"ProjectX HTTP {response.status_code} on {path}")

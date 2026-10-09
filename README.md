@@ -133,13 +133,42 @@ timestamp,open,high,low,close,volume
 python -m topstepbot backtest --csv data/downloads/mes_1m.csv
 ```
 
-To download real MES 1-minute bars (this sends **no** orders; it only reads history):
+To download real MES 1-minute bars, use the read-only command below. It cannot place an order. `download-bars` still exists, but that path constructs the trading client, so do not use it for a history pull.
 
-```bash
-python scripts/download_bars.py --start 2026-01-05 --end 2026-01-10 --out data/downloads/mes_1m.csv
+## Real MES history
+
+Run this on the Mac that has the ProjectX key in `.env`. This environment does not have that key. The command logs in with the read-only client (`History/retrieveBars` and `Contract/search` only), asks for one Central-time day at a time, and writes:
+
+```text
+timestamp,open,high,low,close,volume,contract
 ```
 
-The history call asks for up to 20,000 bars at a time and one day per request. The sample response on ProjectX's site lists newest bars first; the downloader sorts them oldest-first. See "What is not verified" below.
+Timestamps are Central time. The default asks for 365 days, which is the aim (about 6 to 12 months, and a bit more). How far ProjectX actually returns is not known until this command runs. The oldest bar it prints is the limit.
+
+```bash
+cd /Users/heyzeus/topstepbot
+source .venv/bin/activate
+python -m topstepbot fetch-history --days 365 --out data/mes_1m_real.csv
+```
+
+A shorter pull is the same command with a smaller `--days`. If the command stops, run it again with the same `--out`. Days already in the file are skipped, except the last day, which is always refreshed. Bars are deduped by contract and minute.
+
+Known ProjectX limits, from the public docs and the client already in this repo:
+
+- `retrieveBars` accepts at most 20,000 bars per call. One day of MES 1-minute bars is under that. If a response still hits the cap, that slice is split in half and requested again.
+- History calls are paced at 50 every 30 seconds. HTTP 429 waits, honors a numeric `Retry-After` when ProjectX sends one, and stops after 5 failures or 30 seconds of failures. The file already written is kept.
+- The documented sample lists bars newest-first. This command does not depend on that order. It keys each bar by its timestamp.
+- `live: false` is the sim data feed, the same flag the 2026-10-07 check used.
+- Expired quarters are searched as `MES` plus codes such as `MESU6` and `MESU26` (and `MESM`, `MESH`, `MESZ` for the months in the window). `Contract/available` is not called, because the read-only client is not allowed to call it. If search does not return a quarter, that code is printed and skipped. The file then contains only the contracts search did return.
+- The command calls `place_order` once, on purpose, and continues only when that raises the read-only refusal. A client that can place an order is rejected before any download request.
+
+After the CSV is on disk:
+
+```bash
+python -m topstepbot history-report --csv data/mes_1m_real.csv
+```
+
+That replays the live strategy with the paper broker's costs (1 tick of slippage on the entry and again on the exit, plus the config fee of $1.40 per contract round turn). The fee is still the placeholder. The report splits the first two thirds of sessions from the last third, compares drawdown with the $2,000 trailing maximum loss and the $1,000 daily loss limit, counts sessions to a $3,000 target, and checks the 40% consistency rule. It also says, for each filter, how many breakouts it blocked and what those blocked trades returned. It does not change `config/settings.yaml`. The text is printed and saved to `logs/history-report.txt`.
 
 ## Run in paper mode
 
@@ -292,6 +321,7 @@ Not verified, so treat practice mode as something **you** test on a Practice acc
 - **TODO-VERIFY:** Your real round-turn MES fee. `1.40` is only a starting number from a public trade example.
 - **TODO-VERIFY:** Whether a later contract roll still uses the same id shape (`CON.F.US.MES.` + month). The 2026-10-07 front month was `CON.F.US.MES.Z26`. Leave `instrument.contract_id` blank unless search picks the wrong one.
 - Leave `broker.projectx_use_live_data` false. That is the flag the 2026-10-07 history call used.
+- **Not known until `fetch-history` is run on the Mac:** how many days back `retrieveBars` will actually return, and whether search returns expired quarter codes (`MESU26`, `MESM26`, and the rest). The command prints both.
 
 If a bracket is rejected because the account is in Position Brackets mode, the docs say the order can still be created. This client cancels that order id. Confirm the cancel on your Practice account the first time you connect.
 
@@ -304,8 +334,11 @@ If a bracket is rejected because the account is in Position Brackets mode, the d
 | `topstepbot/strategy/engine.py` | Setup A and Setup B, shared by backtest and live |
 | `topstepbot/broker/paper.py` | Offline fills |
 | `topstepbot/broker/projectx.py` | ProjectX gateway client (can send orders) |
-| `topstepbot/broker/readonly.py` | Read-only client used by `check` |
+| `topstepbot/broker/readonly.py` | Read-only client used by `check` and `fetch-history` |
+| `topstepbot/historyfetch.py` | Resume-safe MES history download. Cannot place orders |
+| `topstepbot/historyreport.py` | Strategy report on a real CSV. Does not change settings |
 | `data/sample_mes_1m_synthetic.csv` | Fake bars so the backtest runs immediately |
+| `data/mes_1m_real.csv` | Created on the Mac by `fetch-history`. Gitignored |
 | `tests/` | Unit tests |
 
 ```bash

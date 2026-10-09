@@ -6,8 +6,8 @@ The engine never looks at a bar that has not closed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from topstepbot.bars import BarAggregator, bar_close_time
@@ -22,17 +22,14 @@ from topstepbot.indicators import (
     macd,
     round_to_tick,
     swing_points,
-    trend_for,
+    true_ranges,
     volume_confirmed,
 )
 from topstepbot.journal import Journal
 from topstepbot.levels import (
     build_level_map,
-    london_hl,
     next_target,
     opening_range_from_bars,
-    overnight_hl,
-    prior_rth_hlc,
 )
 from topstepbot.models import Bar, BracketLeg, ClosedTrade, DayStats, Fill, OpeningRange, Side
 from topstepbot.news import block_reason
@@ -40,6 +37,29 @@ from topstepbot.risk import evaluate_entry, initial_mll_floor, trail_mll_floor
 from topstepbot.session import entries_allowed, must_flatten, setup_b_allowed
 from topstepbot.sizing import contracts_for_risk, dollar_risk, split_quantity
 from topstepbot.timeutil import as_chicago, at_clock, session_date
+
+
+@dataclass
+class RuleStudy:
+    """Optional switches for the history report. Live trading leaves this unset.
+
+    ``audit`` only records. The ignore flags are off unless a report asks
+    what one rule costs. They do not change ``config/settings.yaml``.
+    """
+
+    audit: bool = False
+    ignore_chop: bool = False
+    ignore_vwap_ema: bool = False
+    ignore_atr: bool = False
+    ignore_volume: bool = False
+    ignore_fakeout: bool = False
+    retest_tolerance_ticks: int | None = None
+    # Count a pending retest the live band rejects and this wider band would take.
+    # Recording only. Entries still use retest_tolerance_ticks or the config.
+    audit_retest_ticks: int | None = None
+    entry_end: object | None = None
+    blocks: list = field(default_factory=list)
+    _seen: set = field(default_factory=set)
 
 
 @dataclass
@@ -122,6 +142,22 @@ class StrategyEngine:
         self.skips: dict[str, int] = {}
         self.last_watch = ""
         self.equity_curve: list[tuple[datetime, float]] = []
+        # None on the live bot. The history report sets this to count filters.
+        self.study: RuleStudy | None = None
+        # Same EMA, ATR, and swings as recomputing the whole 5-minute list.
+        # Updated one bar at a time so a long history report stays fast.
+        self._ind_n = 0
+        self._ema: list = []
+        self._atr: list = []
+        self._trs: list[float] = []
+        self._swing_high: list = []
+        self._swing_low: list = []
+        # Running high/low for prior RTH, overnight, and London. Same windows
+        # as the scans in levels.py, updated once per minute instead of
+        # re-reading the whole history on every 5-minute bar.
+        self._rth_stats: dict[date, list[float]] = {}
+        self._overnight_stats: dict[date, list[float]] = {}
+        self._london_stats: dict[date, list[float]] = {}
         self.daily_pnl: dict[date, float] = {}
         self.daily_mtm_low: dict[date, float] = {}
         self._plan_logged = False
@@ -130,6 +166,7 @@ class StrategyEngine:
     def on_minute(self, bar: Bar) -> None:
         self._roll_session_if_needed(bar)
         self.minutes.append(bar)
+        self._absorb_level_bar(bar)
         self._update_vwap(bar)
         self._freeze_opening_range(bar)
 
@@ -263,23 +300,70 @@ class StrategyEngine:
     def _rebuild_levels(self, near: float) -> None:
         if self.session_day is None:
             return
-        session = self.config.session
-        prior = prior_rth_hlc(
-            self.minutes, self.session_day, session.timezone, session.rth_open, session.prior_rth_end
-        )
-        overnight = overnight_hl(
-            self.minutes, self.session_day, session.timezone, session.vwap_anchor, session.rth_open
-        )
-        london = london_hl(self.minutes, self.session_day, session.timezone, session.rth_open)
         self.levels = build_level_map(
-            prior=prior,
-            overnight=overnight,
-            london=london,
+            prior=self._prior_rth(self.session_day),
+            overnight=self._pair(self._overnight_stats.get(self.session_day)),
+            london=self._pair(self._london_stats.get(self.session_day)),
             opening=self.opening,
             vwap=self.vwap,
             round_step=self.config.filters.round_number_points,
             near_price=near,
         )
+
+    def _absorb_level_bar(self, bar: Bar) -> None:
+        """Fold one minute into the same windows prior_rth_hlc, overnight_hl, and london_hl use."""
+        session = self.config.session
+        local = as_chicago(bar.time, session.timezone)
+        day = local.date()
+        minute = local.hour * 60 + local.minute
+        rth_open = session.rth_open.hour * 60 + session.rth_open.minute
+        rth_end = session.prior_rth_end.hour * 60 + session.prior_rth_end.minute
+        anchor = session.vwap_anchor.hour * 60 + session.vwap_anchor.minute
+        if rth_open <= minute < rth_end:
+            slot = self._rth_stats.get(day)
+            if slot is None:
+                self._rth_stats[day] = [bar.high, bar.low, bar.close]
+            else:
+                if bar.high > slot[0]:
+                    slot[0] = bar.high
+                if bar.low < slot[1]:
+                    slot[1] = bar.low
+                slot[2] = bar.close
+        if minute >= anchor:
+            self._bump_hl(self._overnight_stats, day + timedelta(days=1), bar)
+        elif minute < rth_open:
+            self._bump_hl(self._overnight_stats, day, bar)
+        # levels.london_hl defaults to 02:00 CT through the cash open.
+        if 2 * 60 <= minute < rth_open:
+            self._bump_hl(self._london_stats, day, bar)
+
+    def _prior_rth(self, session_day: date) -> tuple[float, float, float] | None:
+        previous = session_day - timedelta(days=1)
+        for _ in range(4):
+            if previous.weekday() < 5:
+                break
+            previous -= timedelta(days=1)
+        slot = self._rth_stats.get(previous)
+        if slot is None:
+            return None
+        return (slot[0], slot[1], slot[2])
+
+    @staticmethod
+    def _bump_hl(store: dict[date, list[float]], key: date, bar: Bar) -> None:
+        slot = store.get(key)
+        if slot is None:
+            store[key] = [bar.high, bar.low]
+            return
+        if bar.high > slot[0]:
+            slot[0] = bar.high
+        if bar.low < slot[1]:
+            slot[1] = bar.low
+
+    @staticmethod
+    def _pair(slot: list[float] | None) -> tuple[float, float] | None:
+        if slot is None:
+            return None
+        return (slot[0], slot[1])
 
     def _on_signal_bar(self, bar: Bar) -> None:
         if self.session_day is None:
@@ -293,7 +377,11 @@ class StrategyEngine:
                 return
         if self.day_flattened or self.day.halted:
             return
+        if self.study is not None and self.study.audit:
+            self._audit_opening_break(bar)
         if not entries_allowed(decision_time, self.config.session):
+            self._audit_cutoff(bar, decision_time)
+        if not self._entries_open(decision_time):
             return
         news = block_reason(decision_time, self.config.news, self.config.session.timezone)
         if news:
@@ -306,9 +394,10 @@ class StrategyEngine:
             self._skip("indicators warming up", bar)
             return
         if self._chop():
-            self._skip("chop filter", bar)
-            self.last_watch = "chop filter"
-            return
+            if not self._ignoring("ignore_chop"):
+                self._skip("chop filter", bar)
+                self.last_watch = "chop filter"
+                return
         before = dict(self.skips)
         signal_side = self._arm_breaks(bar, index)
         if signal_side is None:
@@ -360,7 +449,7 @@ class StrategyEngine:
                 for side in (Side.LONG, Side.SHORT):
                     if self._slot_used("B", level_name, side):
                         continue
-                    if not trend_for(self.bars_5, filters.swing_bars_each_side, side):
+                    if not self._trend_ok(side):
                         continue
                     if self._break_is_valid(bar, level, side):
                         self.pending.append(PendingBreak("B", side, level_name, level, index))
@@ -384,18 +473,21 @@ class StrategyEngine:
             if since < 1:
                 continue
             if self._closed_back_through(bar, item) and since <= self.config.exits.fakeout_bars:
-                item.done = True
-                self._skip(f"fakeout {item.setup} {item.level_name} {item.side.value}", bar)
-                continue
+                self._audit_name("fakeout", bar, item.level_name)
+                if not self._ignoring("ignore_fakeout"):
+                    item.done = True
+                    self._skip(f"fakeout {item.setup} {item.level_name} {item.side.value}", bar)
+                    continue
             if since > self.config.exits.retest_timeout_bars:
                 item.done = True
                 self._skip(f"retest timeout {item.setup} {item.level_name}", bar)
                 continue
+            self._audit_retest_depth(bar, item)
             if not is_retest_bar(
                 bar,
                 item.level,
                 item.side,
-                self.config.exits.retest_tolerance_ticks * self.config.instrument.tick_size,
+                self._retest_tolerance(),
             ):
                 continue
             if self._side_blocked(item.side, index):
@@ -624,10 +716,9 @@ class StrategyEngine:
             held = (decision_time - trade.entry_time).total_seconds() / 60.0
             if not trade.t1_done and held >= self.config.exits.time_exit_minutes:
                 return "time exit"
-        emas = ema([b.close for b in self.bars_5], self.config.filters.ema_period)
-        atrs = atr(self.bars_5, self.config.filters.atr_period)
-        ema_now = emas[-1] if emas else None
-        atr_now = atrs[-1] if atrs else None
+        self._ensure_indicators()
+        ema_now = self._ema[-1] if self._ema else None
+        atr_now = self._atr[-1] if self._atr else None
         if ema_now is not None:
             if trade.side is Side.LONG and bar.close < ema_now:
                 return "close through 21 EMA"
@@ -674,9 +765,8 @@ class StrategyEngine:
     def _trail(self, trade: LogicalTrade) -> None:
         if not trade.t1_done:
             return
-        wing = self.config.filters.swing_bars_each_side
-        kind = "low" if trade.side is Side.LONG else "high"
-        swings = swing_points(self.bars_5, wing, kind)
+        self._ensure_indicators()
+        swings = self._swing_low if trade.side is Side.LONG else self._swing_high
         tick = self.config.instrument.tick_size
         buffer = self.config.exits.trail_ticks_beyond_swing * tick
         new_stop = None
@@ -891,21 +981,204 @@ class StrategyEngine:
         return len(self.bars_5) >= need and self.vwap is not None
 
     def _chop(self) -> bool:
-        closes = [bar.close for bar in self.bars_5]
-        emas = ema(closes, self.config.filters.ema_period)
-        atrs = atr(self.bars_5, self.config.filters.atr_period)
+        self._ensure_indicators()
+        need = max(self.config.filters.chop_lookback_bars, self.config.filters.chop_slope_bars) + 1
+        closes = [bar.close for bar in self.bars_5[-need:]]
+        emas = self._ema[-need:]
+        atr_now = self._atr[-1] if self._atr else None
         return is_chop(
             closes,
             emas,
-            atrs[-1],
+            atr_now,
             cross_limit=self.config.filters.chop_ema_crosses,
             cross_lookback=self.config.filters.chop_lookback_bars,
             slope_bars=self.config.filters.chop_slope_bars,
             slope_atr_fraction=self.config.filters.chop_slope_atr_fraction,
         )
 
+    def _ensure_indicators(self) -> None:
+        n = len(self.bars_5)
+        if self._ind_n == n:
+            return
+        if self._ind_n == 0 or n != self._ind_n + 1:
+            self._rebuild_indicators()
+            return
+        self._append_indicator()
+
+    def _rebuild_indicators(self) -> None:
+        closes = [bar.close for bar in self.bars_5]
+        filters = self.config.filters
+        self._ema = ema(closes, filters.ema_period)
+        self._atr = atr(self.bars_5, filters.atr_period)
+        self._trs = true_ranges(self.bars_5) if self.bars_5 else []
+        self._swing_high = swing_points(self.bars_5, filters.swing_bars_each_side, "high")
+        self._swing_low = swing_points(self.bars_5, filters.swing_bars_each_side, "low")
+        self._ind_n = len(self.bars_5)
+
+    def _append_indicator(self) -> None:
+        filters = self.config.filters
+        bar = self.bars_5[-1]
+        n = len(self.bars_5)
+        period = filters.ema_period
+        if n < period:
+            self._ema.append(None)
+        elif n == period:
+            self._ema.append(sum(item.close for item in self.bars_5[:period]) / period)
+        else:
+            k = 2.0 / (period + 1)
+            prev = self._ema[-1]
+            self._ema.append(bar.close * k + prev * (1.0 - k))
+        if n == 1:
+            true_range = bar.high - bar.low
+        else:
+            prev_close = self.bars_5[-2].close
+            true_range = max(bar.high - bar.low, abs(bar.high - prev_close), abs(bar.low - prev_close))
+        self._trs.append(true_range)
+        atr_period = filters.atr_period
+        if n < atr_period:
+            self._atr.append(None)
+        elif n == atr_period:
+            self._atr.append(sum(self._trs[:atr_period]) / atr_period)
+        else:
+            prev_atr = self._atr[-1]
+            self._atr.append((prev_atr * (atr_period - 1) + true_range) / atr_period)
+        self._note_new_swings()
+        self._ind_n = n
+
+    def _note_new_swings(self) -> None:
+        wing = self.config.filters.swing_bars_each_side
+        index = len(self.bars_5) - 1 - wing
+        if index < wing:
+            return
+        if self._is_swing(index, "high"):
+            self._swing_high.append((index, self.bars_5[index].high))
+        if self._is_swing(index, "low"):
+            self._swing_low.append((index, self.bars_5[index].low))
+
+    def _is_swing(self, index: int, kind: str) -> bool:
+        wing = self.config.filters.swing_bars_each_side
+        bars = self.bars_5
+        if kind == "high":
+            price = bars[index].high
+            return all(price > bars[index - k].high for k in range(1, wing + 1)) and all(
+                price > bars[index + k].high for k in range(1, wing + 1)
+            )
+        price = bars[index].low
+        return all(price < bars[index - k].low for k in range(1, wing + 1)) and all(
+            price < bars[index + k].low for k in range(1, wing + 1)
+        )
+
+    def _trend_ok(self, side: Side) -> bool:
+        self._ensure_indicators()
+        highs = self._swing_high
+        lows = self._swing_low
+        if len(highs) < 2 or len(lows) < 2:
+            return False
+        if side is Side.LONG:
+            return highs[-1][1] > highs[-2][1] and lows[-1][1] > lows[-2][1]
+        return highs[-1][1] < highs[-2][1] and lows[-1][1] < lows[-2][1]
+
     def _break_is_valid(self, bar: Bar, level: float, side: Side) -> bool:
         return self._break_block_reason(bar, level, side) is None
+
+    def _ignoring(self, flag: str) -> bool:
+        study = self.study
+        return study is not None and bool(getattr(study, flag))
+
+    def _entries_open(self, decision_time: datetime) -> bool:
+        study = self.study
+        if study is None or study.entry_end is None:
+            return entries_allowed(decision_time, self.config.session)
+        session = replace(self.config.session, entry_end=study.entry_end)
+        return entries_allowed(decision_time, session)
+
+    def _retest_tolerance(self) -> float:
+        ticks = self.config.exits.retest_tolerance_ticks
+        study = self.study
+        if study is not None and study.retest_tolerance_ticks is not None:
+            ticks = study.retest_tolerance_ticks
+        return ticks * self.config.instrument.tick_size
+
+    def _audit_name(self, name: str, bar: Bar, detail: str) -> None:
+        study = self.study
+        if study is None or not study.audit:
+            return
+        key = (name, bar.time.isoformat(), detail)
+        if key in study._seen:
+            return
+        study._seen.add(key)
+        study.blocks.append({"filter": name, "bar": bar.time.isoformat(), "detail": detail})
+
+    def _audit_cutoff(self, bar: Bar, decision_time: datetime) -> None:
+        if self.study is None or not self.study.audit:
+            return
+        if entries_allowed(decision_time, self.config.session) or must_flatten(decision_time, self.config.session):
+            return
+        opening = self.opening
+        if opening is None:
+            return
+        if bar.close > opening.high or bar.close < opening.low:
+            self._audit_name("cutoff", bar, "or")
+
+    def _audit_retest_depth(self, bar: Bar, item: PendingBreak) -> None:
+        if self.study is None or not self.study.audit:
+            return
+        if self._closed_back_through(bar, item):
+            return
+        tick = self.config.instrument.tick_size
+        if tick <= 0:
+            return
+        if item.side is Side.LONG:
+            if bar.close <= item.level:
+                return
+            depth = (item.level - bar.low) / tick
+        else:
+            if bar.close >= item.level:
+                return
+            depth = (bar.high - item.level) / tick
+        allowed = self.config.exits.retest_tolerance_ticks
+        wider = self.study.audit_retest_ticks
+        if wider is not None:
+            live_band = allowed * tick
+            wide_band = wider * tick
+            if is_retest_bar(bar, item.level, item.side, wide_band) and not is_retest_bar(
+                bar, item.level, item.side, live_band
+            ):
+                self._audit_name("retest", bar, f"{item.level_name}:{depth:.1f}")
+            return
+        if depth > allowed:
+            self._audit_name("retest", bar, f"{item.level_name}:{depth:.1f}")
+
+    def _audit_opening_break(self, bar: Bar) -> None:
+        """Record which rules would reject a close through the opening range.
+
+        This does not place or block an order. It runs only when a report asks.
+        """
+        if self.opening is None or not self._indicators_ready():
+            return
+        if self._chop() and (bar.close > self.opening.high or bar.close < self.opening.low):
+            self._audit_name("chop", bar, "or")
+        for side, level_name, level in (
+            (Side.LONG, "or_high", self.opening.high),
+            (Side.SHORT, "or_low", self.opening.low),
+        ):
+            beyond = bar.close > level if side is Side.LONG else bar.close < level
+            if not beyond:
+                continue
+            saved = self.study
+            self.study = None
+            try:
+                reason = self._break_block_reason(bar, level, side)
+            finally:
+                self.study = saved
+            mapped = {
+                "not above the 5-minute average and VWAP": "vwap_ema",
+                "not below the 5-minute average and VWAP": "vwap_ema",
+                "too far from the 5-minute average": "atr",
+                "volume is not strong enough": "volume",
+            }.get(reason or "")
+            if mapped:
+                self._audit_name(mapped, bar, level_name)
 
     def _narrate_quiet_bar(self, bar: Bar) -> None:
         """Say why a live 5-minute bar did not become an order. Does not trade."""
@@ -945,22 +1218,25 @@ class StrategyEngine:
     def _break_block_reason(self, bar: Bar, level: float, side: Side) -> str | None:
         """Why this bar is not a valid break. None means the break is valid."""
         filters = self.config.filters
-        closes = [b.close for b in self.bars_5]
-        emas = ema(closes, filters.ema_period)
-        atrs = atr(self.bars_5, filters.atr_period)
+        self._ensure_indicators()
+        emas = self._ema
+        atrs = self._atr
         ema_now = emas[-1] if emas else None
         atr_now = atrs[-1] if atrs else None
         if ema_now is None or atr_now is None or self.vwap is None:
             return "indicators are not ready"
-        if side is Side.LONG and not (bar.close > self.vwap and bar.close > ema_now):
-            return "not above the 5-minute average and VWAP"
-        if side is Side.SHORT and not (bar.close < self.vwap and bar.close < ema_now):
-            return "not below the 5-minute average and VWAP"
-        if abs(bar.close - ema_now) > filters.overextended_atr * atr_now:
-            return "too far from the 5-minute average"
-        volumes = [b.volume for b in self.bars_5]
-        if not volume_confirmed(volumes, filters.volume_lookback, filters.volume_multiple):
-            return "volume is not strong enough"
+        if not self._ignoring("ignore_vwap_ema"):
+            if side is Side.LONG and not (bar.close > self.vwap and bar.close > ema_now):
+                return "not above the 5-minute average and VWAP"
+            if side is Side.SHORT and not (bar.close < self.vwap and bar.close < ema_now):
+                return "not below the 5-minute average and VWAP"
+        if not self._ignoring("ignore_atr"):
+            if abs(bar.close - ema_now) > filters.overextended_atr * atr_now:
+                return "too far from the 5-minute average"
+        volumes = [b.volume for b in self.bars_5[-(filters.volume_lookback + 1) :]]
+        if not self._ignoring("ignore_volume"):
+            if not volume_confirmed(volumes, filters.volume_lookback, filters.volume_multiple):
+                return "volume is not strong enough"
         if not is_strong_break(
             bar,
             level,
@@ -971,6 +1247,7 @@ class StrategyEngine:
         ):
             return "5-minute candle is not a strong close through the level"
         if filters.use_macd_filter:
+            closes = [b.close for b in self.bars_5]
             _line, _sig, hist = macd(closes, filters.macd_fast, filters.macd_slow, filters.macd_signal)
             if hist[-1] is None:
                 return "indicators are not ready"

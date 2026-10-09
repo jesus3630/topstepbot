@@ -59,6 +59,21 @@ def main(argv: list[str] | None = None) -> int:
     download.add_argument("--end", required=True, help="ISO date or timestamp")
     download.add_argument("--out", default="data/downloads/mes_1m.csv")
 
+    fetch = sub.add_parser(
+        "fetch-history",
+        help="Download MES 1-minute history with the read-only client. Cannot place orders.",
+    )
+    fetch.add_argument("--days", type=int, default=365, help="How many days back to ask for (default 365).")
+    fetch.add_argument("--out", default="data/mes_1m_real.csv", help="CSV path. Resume-safe if the file already exists.")
+
+    history = sub.add_parser(
+        "history-report",
+        help="Run the live strategy on a 1-minute CSV and write the history report. Does not change settings.",
+    )
+    history.add_argument("--csv", default="data/mes_1m_real.csv")
+    history.add_argument("--out", default="logs/history-report.txt")
+    history.add_argument("--label", default="", help="Optional first line, for a preliminary public-data file.")
+
     args = parser.parse_args(argv)
     config = load_config(args.config)
     armed = bool(config.runtime.armed or getattr(args, "arm", False))
@@ -87,6 +102,16 @@ def main(argv: list[str] | None = None) -> int:
 
         count = download_bars(config, args.start, args.end, Path(args.out))
         print(f"Wrote {count} bars to {args.out}")
+        return 0
+    if args.command == "fetch-history":
+        from topstepbot.historyfetch import fetch_history
+
+        fetch_history(days=args.days, out=args.out)
+        return 0
+    if args.command == "history-report":
+        from topstepbot.historyreport import write_history_report
+
+        print(write_history_report(config, args.csv, out=args.out, label=args.label))
         return 0
     return 1
 
