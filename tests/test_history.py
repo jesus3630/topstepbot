@@ -266,6 +266,12 @@ def test_history_report_states_combine_stats_without_editing_settings(tmp_path):
         "opening range",
         "slippage",
         "Live defaults were not changed",
+        "(a) Current rules",
+        "8 ticks",
+        "0.25 times",
+        "opening-range midpoint",
+        "pullback swing",
+        "small sample",
     ):
         assert phrase in text
     assert (tmp_path / "report.txt").read_text(encoding="utf-8").startswith("History report")
@@ -381,6 +387,55 @@ def test_wider_retest_audit_counts_a_near_miss(tmp_path):
     )
     engine._audit_retest_depth(near, PendingBreak("A", Side.LONG, "or_high", 100.0, 0))
     assert engine.study.blocks[0]["detail"] == "or_high:-3.0"
+
+
+def test_study_entry_variants_do_not_change_the_live_tolerance(tmp_path):
+    from datetime import date
+
+    from topstepbot.broker.paper import PaperBroker
+    from topstepbot.config import load_config
+    from topstepbot.journal import Journal
+    from topstepbot.models import OpeningRange, PriceLevel
+    from topstepbot.strategy.engine import StrategyEngine
+
+    settings = Path("config/settings.yaml").read_text(encoding="utf-8")
+    config = load_config("config/settings.yaml")
+    journal = Journal(tmp_path / "logs")
+    journal.logger.handlers = [
+        handler for handler in journal.logger.handlers if handler.__class__.__name__ != "StreamHandler"
+    ]
+    engine = StrategyEngine(config, PaperBroker(config), journal, armed=True)
+    engine.opening = OpeningRange(date(2026, 1, 6), 110.0, 100.0)
+    engine.levels = [PriceLevel("round_130.00", 130.0), PriceLevel("round_80.00", 80.0)]
+    assert engine._retest_tolerance() == pytest.approx(0.50)
+    engine.study = RuleStudy(retest_or_fraction=0.25)
+    assert engine._retest_tolerance() == pytest.approx(2.5)
+    engine.study = RuleStudy(retest_tolerance_ticks=8)
+    assert engine._retest_tolerance() == pytest.approx(2.0)
+    bar = Bar(
+        time=datetime(2026, 1, 6, 9, 0, tzinfo=CHICAGO),
+        open=111.0,
+        high=112.0,
+        low=110.5,
+        close=111.5,
+        volume=200,
+    )
+    engine.study = RuleStudy(retest_stop_beyond_swing=True)
+    swing = PendingBreak("A", Side.LONG, "or_high", 110.0, 0, swing_low=109.0, swing_high=112.0)
+    built = engine._build_retest(bar, swing, 5)
+    assert built is not None
+    assert built["entry"] == pytest.approx(112.25)
+    assert built["stop"] == pytest.approx(108.50)
+    assert built["entry_type"] == "stop"
+    engine.study = RuleStudy(setup_a_close_entry=True)
+    close_entry = engine._build_midpoint(bar, Side.LONG, "or_high", 110.0, 5)
+    assert close_entry is not None
+    assert close_entry["entry"] == pytest.approx(111.5)
+    assert close_entry["stop"] == pytest.approx(105.0)
+    assert close_entry["entry_type"] == "market"
+    assert Path("config/settings.yaml").read_text(encoding="utf-8") == settings
+    assert config.exits.retest_tolerance_ticks == 2
+    assert config.filters.setup_a_entry_mode == "retest"
 
 
 def test_cli_offers_fetch_history():

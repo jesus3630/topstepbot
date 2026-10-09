@@ -54,6 +54,14 @@ class RuleStudy:
     ignore_volume: bool = False
     ignore_fakeout: bool = False
     retest_tolerance_ticks: int | None = None
+    # Price distance = this fraction of the opening-range width. Not a tuned fit.
+    retest_or_fraction: float | None = None
+    # Setup A market entry on the breakout close, stop at the range midpoint.
+    # Setup B stays off for that comparison. Live mode leaves this false.
+    setup_a_close_entry: bool = False
+    # Keep the retest entry. Place the stop beyond the pullback's extreme,
+    # not only beyond the trigger bar. Live mode leaves this false.
+    retest_stop_beyond_swing: bool = False
     # Count a pending retest the live band rejects and this wider band would take.
     # Recording only. Entries still use retest_tolerance_ticks or the config.
     audit_retest_ticks: int | None = None
@@ -70,6 +78,8 @@ class PendingBreak:
     level: float
     break_index: int
     done: bool = False
+    swing_low: float = 0.0
+    swing_high: float = 0.0
 
 
 @dataclass
@@ -420,7 +430,23 @@ class StrategyEngine:
                 if self._slot_used("A", level_name, side):
                     continue
                 if self._break_is_valid(bar, level, side):
-                    if filters.setup_a_entry_mode == "classic":
+                    if self._study_flag("setup_a_close_entry"):
+                        built = self._build_midpoint(bar, side, level_name, level, index)
+                        if built is not None:
+                            self.pending.append(
+                                PendingBreak(
+                                    "A",
+                                    side,
+                                    level_name,
+                                    level,
+                                    index,
+                                    done=True,
+                                    swing_low=bar.low,
+                                    swing_high=bar.high,
+                                )
+                            )
+                            return built
+                    elif filters.setup_a_entry_mode == "classic":
                         built = self._build_classic(bar, side, level_name, level, index)
                         if built is not None:
                             self.pending.append(
@@ -428,7 +454,17 @@ class StrategyEngine:
                             )
                             return built
                     else:
-                        self.pending.append(PendingBreak("A", side, level_name, level, index))
+                        self.pending.append(
+                            PendingBreak(
+                                "A",
+                                side,
+                                level_name,
+                                level,
+                                index,
+                                swing_low=bar.low,
+                                swing_high=bar.high,
+                            )
+                        )
                         self.journal.signal(
                             setup="A",
                             side=side.value,
@@ -439,6 +475,7 @@ class StrategyEngine:
                         )
         if (
             filters.setup_b_enabled
+            and not self._study_flag("setup_a_close_entry")
             and self._bar_opens_in_entry_window(bar)
             and setup_b_allowed(bar_close_time(bar, filters.signal_timeframe_minutes), self.config.session)
         ):
@@ -452,7 +489,17 @@ class StrategyEngine:
                     if not self._trend_ok(side):
                         continue
                     if self._break_is_valid(bar, level, side):
-                        self.pending.append(PendingBreak("B", side, level_name, level, index))
+                        self.pending.append(
+                            PendingBreak(
+                                "B",
+                                side,
+                                level_name,
+                                level,
+                                index,
+                                swing_low=bar.low,
+                                swing_high=bar.high,
+                            )
+                        )
                         self.journal.signal(
                             setup="B",
                             side=side.value,
@@ -472,6 +519,14 @@ class StrategyEngine:
             since = index - item.break_index
             if since < 1:
                 continue
+            if item.swing_low <= 0:
+                item.swing_low = bar.low
+            else:
+                item.swing_low = min(item.swing_low, bar.low)
+            if item.swing_high <= 0:
+                item.swing_high = bar.high
+            else:
+                item.swing_high = max(item.swing_high, bar.high)
             if self._closed_back_through(bar, item) and since <= self.config.exits.fakeout_bars:
                 self._audit_name("fakeout", bar, item.level_name)
                 if not self._ignoring("ignore_fakeout"):
@@ -505,11 +560,22 @@ class StrategyEngine:
         exits = self.config.exits
         if item.side is Side.LONG:
             entry = round_to_tick(bar.high + exits.entry_stop_offset_ticks * tick, tick)
-            stop = round_to_tick(bar.low - exits.stop_buffer_ticks * tick, tick)
+            extreme = item.swing_low if self._study_flag("retest_stop_beyond_swing") else bar.low
+            stop = round_to_tick(extreme - exits.stop_buffer_ticks * tick, tick)
         else:
             entry = round_to_tick(bar.low - exits.entry_stop_offset_ticks * tick, tick)
-            stop = round_to_tick(bar.high + exits.stop_buffer_ticks * tick, tick)
+            extreme = item.swing_high if self._study_flag("retest_stop_beyond_swing") else bar.high
+            stop = round_to_tick(extreme + exits.stop_buffer_ticks * tick, tick)
         return self._package(item.setup, item.side, item.level_name, item.level, entry, stop, bar, index, "stop")
+
+    def _build_midpoint(self, bar: Bar, side: Side, level_name: str, level: float, index: int):
+        """Setup A at the breakout close. The stop is the opening-range midpoint."""
+        if self.opening is None:
+            return None
+        tick = self.config.instrument.tick_size
+        entry = round_to_tick(bar.close, tick)
+        stop = round_to_tick((self.opening.high + self.opening.low) / 2.0, tick)
+        return self._package("A", side, level_name, level, entry, stop, bar, index, "market")
 
     def _build_classic(self, bar: Bar, side: Side, level_name: str, level: float, index: int):
         if self.opening is None:
@@ -1092,9 +1158,17 @@ class StrategyEngine:
         session = replace(self.config.session, entry_end=study.entry_end)
         return entries_allowed(decision_time, session)
 
-    def _retest_tolerance(self) -> float:
-        ticks = self.config.exits.retest_tolerance_ticks
+    def _study_flag(self, flag: str) -> bool:
         study = self.study
+        return study is not None and bool(getattr(study, flag))
+
+    def _retest_tolerance(self) -> float:
+        study = self.study
+        if study is not None and study.retest_or_fraction is not None and self.opening is not None:
+            width = self.opening.high - self.opening.low
+            if width > 0:
+                return study.retest_or_fraction * width
+        ticks = self.config.exits.retest_tolerance_ticks
         if study is not None and study.retest_tolerance_ticks is not None:
             ticks = study.retest_tolerance_ticks
         return ticks * self.config.instrument.tick_size

@@ -276,6 +276,8 @@ def _render(
     lines.append("")
     lines.extend(_morning_lines(config, bars))
     lines.append("")
+    lines.extend(_variant_lines(config, bars, result, in_days, out_days, days, log_dir))
+    lines.append("")
     lines.append(
         "Recommendation: leave the live defaults as they are. "
         "A filter is only flagged when relaxing it adds trades in both halves and those "
@@ -363,7 +365,7 @@ def _per_day(result: SessionResult) -> list[str]:
     lines = []
     for day in days:
         pnl = result.daily_pnl.get(day, 0.0)
-        lines.append(f"{day.isoformat()}: {counts.get(day, 0)} trades, ${pnl:,.2f}")
+        lines.append(f"{day.isoformat()}: {_noun(counts.get(day, 0), 'trade')}, {_money(pnl)}")
     return lines
 
 
@@ -485,6 +487,102 @@ def _filter_lines(
         if in_extra and out_extra and out_net > 0:
             flagged.append(title)
     return lines, flagged
+
+
+def _variant_lines(
+    config: BotConfig,
+    bars: list[Bar],
+    baseline: SessionResult,
+    in_days: set[date],
+    out_days: set[date],
+    days: list[date],
+    log_dir: Path,
+) -> list[str]:
+    """Five entry definitions fixed before looking at a file. Live settings stay put."""
+    specs: list[tuple[str, RuleStudy | None]] = [
+        ("(a) Current rules. A retest must come within 2 ticks, and the stop sits just beyond that retest bar.", None),
+        (
+            "(b) Same rules, but the retest may be 8 ticks away. Eight was chosen in advance. It was not fit to this file.",
+            RuleStudy(retest_tolerance_ticks=RETEST_WHAT_IF_TICKS),
+        ),
+        (
+            "(c) Same rules, but the retest may be as far as 0.25 times that day's opening-range width. "
+            "The 0.25 was chosen in advance. It was not fit to this file.",
+            RuleStudy(retest_or_fraction=0.25),
+        ),
+        (
+            "(d) Setup A enters at the 5-minute breakout close and puts the stop at the opening-range midpoint. "
+            "There is no retest. Setup B is off for this comparison.",
+            RuleStudy(setup_a_close_entry=True),
+        ),
+        (
+            "(e) Same 2-tick retest and the same stop-entry beyond the retest bar. "
+            "The protective stop goes beyond the pullback swing (the deepest price of the whole pullback), "
+            "plus the usual 2-tick buffer.",
+            RuleStudy(retest_stop_beyond_swing=True),
+        ),
+    ]
+    lines = [
+        "Entry variants",
+        (
+            f"{len(days)} cash sessions is a small sample. These five definitions were written down "
+            "before the results. Live trading stays on (a). Nothing here is saved to config/settings.yaml."
+        ),
+    ]
+    for title, study in specs:
+        result = baseline if study is None else _replay(config, bars, study, log_dir)
+        lines.append(title)
+        lines.extend(_variant_stats(config, result, in_days, out_days))
+    return lines
+
+
+def _variant_stats(
+    config: BotConfig, result: SessionResult, in_days: set[date], out_days: set[date]
+) -> list[str]:
+    stats = _trade_stats(result.trades)
+    worst = "no completed day"
+    if result.daily_pnl:
+        day = min(result.daily_pnl, key=result.daily_pnl.get)
+        worst = f"{day.isoformat()} {_money(result.daily_pnl[day])} realized"
+    bot_days = sorted(day for day, low in result.daily_mtm_low.items() if low <= -config.risk.daily_max_loss)
+    dll_days = sorted(day for day, low in result.daily_mtm_low.items() if low <= -COMBINE_DLL)
+    lows = list(result.daily_mtm_low.values())
+    worst_low = min(lows) if lows else 0.0
+    lines = [
+        (
+            f"Trades: {stats['trades']}. Win rate: {stats['win_rate']:.1f}%. "
+            f"Expectancy per trade: {stats['expectancy']}. Net P&L: {_money(stats['net'])}. "
+            f"Max drawdown: {_money(_max_drawdown(result.equity_curve))}."
+        ),
+        (
+            f"Worst day: {worst}. Deepest intraday mark: {_money(worst_low)}. "
+            f"Days that reached the ${config.risk.daily_max_loss:,.0f} bot stop: {_dates(bot_days)}. "
+            f"Days that reached the ${COMBINE_DLL:,.0f} daily loss limit: {_dates(dll_days)}."
+        ),
+        "In-sample: " + _variant_slice(config, result, in_days),
+        "Out-of-sample: " + (
+            _variant_slice(config, result, out_days) if out_days else "no sessions in the last third."
+        ),
+    ]
+    if result.skips:
+        top = sorted(result.skips.items(), key=lambda item: item[1], reverse=True)[:3]
+        lines.append("Most common skips: " + ", ".join(f"{name}={count}" for name, count in top))
+    return lines
+
+
+def _variant_slice(config: BotConfig, result: SessionResult, days: set[date]) -> str:
+    trades = [trade for trade in result.trades if trade.session_date in days]
+    stats = _trade_stats(trades)
+    curve = [
+        (moment, equity)
+        for moment, equity in result.equity_curve
+        if session_date(moment, config.session) in days
+    ]
+    return (
+        f"{_noun(stats['trades'], 'trade')}, win rate {stats['win_rate']:.1f}%, "
+        f"expectancy {stats['expectancy']}, net {_money(stats['net'])}, "
+        f"max drawdown {_money(_max_drawdown(curve))}"
+    )
 
 
 def _trade_diff(

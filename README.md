@@ -168,7 +168,7 @@ After the CSV is on disk:
 python -m topstepbot history-report --csv data/mes_1m_real.csv
 ```
 
-That replays the live strategy with the paper broker's costs (1 tick of slippage on the entry and again on the exit, plus the config fee of $1.40 per contract round turn). The fee is still the placeholder. The report splits the first two thirds of sessions from the last third, compares drawdown with the $2,000 trailing maximum loss and the $1,000 daily loss limit, counts sessions to a $3,000 target, and checks the 40% consistency rule. It also says, for each filter, how many breakouts it blocked and what those blocked trades returned. It does not change `config/settings.yaml`. The text is printed and saved to `logs/history-report.txt`.
+That replays the live strategy with the paper broker's costs (1 tick of slippage on the entry and again on the exit, plus the config fee of $1.40 per contract round turn). The fee is still the placeholder. The report splits the first two thirds of sessions from the last third, compares drawdown with the $2,000 trailing maximum loss and the $1,000 daily loss limit, counts sessions to a $3,000 target, and checks the 40% consistency rule. It also says, for each filter, how many breakouts it blocked and what those blocked trades returned. A later section replays five entry definitions that were written down in advance (the live 2-tick retest, an 8-tick retest, a retest of 0.25 times the opening-range width, a breakout-close entry with the stop at the range midpoint, and a retest whose stop sits beyond the pullback swing). Those runs are not saved. It does not change `config/settings.yaml`. The text is printed and saved to `logs/history-report.txt`.
 
 ## Run in paper mode
 
