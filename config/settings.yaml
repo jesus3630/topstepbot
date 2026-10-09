@@ -1,0 +1,177 @@
+# =============================================================================
+# Topstep day bot — the only settings file
+# =============================================================================
+# Edit this file in a text editor. Every number the course left unspecified,
+# and every agreed setting, lives here. Nothing in the strategy code hardcodes
+# these values.
+#
+# Times are Central Time (America/Chicago), 24-hour clock.
+# This bot trades Setup A (15-minute opening range) and Setup B (key-level
+# breakout and retest) only. See docs/rulebook.md.
+#
+# You must be at this PC while it runs. Do not run it on a VPS, VPN, or server.
+
+instrument:
+  # Micro E-mini S&P 500. The front-month contract is looked up at startup.
+  symbol: MES
+  tick_size: 0.25          # [CONTRACT SPEC] MES minimum price increment
+  tick_value: 1.25         # [CONTRACT SPEC] dollars per tick ($5 per point)
+  # Leave blank to use the active front month from Contract/search.
+  # Confirmed 2026-10-07 on this Combine: id CON.F.US.MES.Z26, name MESZ6,
+  # symbolId F.US.MES, tickSize 0.25, tickValue 1.25, activeContract true.
+  contract_id: ""
+
+account:
+  label: "50K"
+  starting_balance: 50000
+  # Pin the Combine whose name starts with 50KTC. Confirmed live:
+  # simulated true, canTrade true, balance present. A Live Funded account
+  # (simulated false, or a name containing LIVE) is still refused.
+  account_id: null
+  account_name_contains: "50KTC"
+  # practice, combine, or express. Used when the API omits "simulated".
+  kind: combine
+
+session:
+  timezone: America/Chicago
+  rth_open: "08:30"             # cash open; opening range starts
+  opening_range_end: "08:45"   # range is 08:30:00 through 08:44:59
+  entry_start: "08:45"         # no new entries before this
+  entry_end: "10:15"           # last moment a new entry may be sent
+  flatten_time: "10:30"        # flat, done for the day
+  hard_flat_time: "15:10"      # Topstep trading day ends 3:10 PM CT
+  prior_rth_end: "15:00"       # prior-day close = last price before this
+  vwap_anchor: "17:00"         # Globex session VWAP anchor
+  setup_b_entry_end: "09:45"   # Setup B only in the first hour after the open
+
+risk:
+  risk_per_trade: 200
+  daily_max_loss: 400          # realized + open P&L; flatten and stop
+  daily_profit_stop: 800       # flatten and stop for the day
+  max_trades_per_day: 3
+  max_consecutive_losses: 2
+  # Computed size = floor(risk / (stop distance x tick value + slippage + fees))
+  # then capped by max_contracts. 2 is the starting size so "sell half" works.
+  max_contracts: 2
+  slippage_ticks: 1
+  # Confirm this against your TopstepX statement. The public trade example
+  # shows a fee field of 1.40; that may not be your round-turn rate.
+  # TODO-VERIFY: your actual round-turn fee per MES contract.
+  round_turn_fee_per_contract: 1.40
+  topstep_max_loss: 2000       # 50K Combine maximum loss limit
+  topstep_max_contracts: 50    # 50K Combine micro contract cap
+  # If equity is within this many risk-units of the max-loss floor, halve risk.
+  # Within mll_stop_multiple, stop trading.
+  mll_halve_risk_multiple: 3
+  mll_stop_multiple: 1
+
+exits:
+  partial_fraction: 0.5
+  min_reward_risk: 2.0
+  # OFF by default.
+  # Topstep prohibits "using tight brackets or auto-breakeven to take advantage
+  # of favorable SIM fills." Leave this false unless you have decided, yourself,
+  # that moving the stop to entry after the first target is ordinary management
+  # and not a sim-fill tactic. The bot will not turn it on for you.
+  move_stop_to_breakeven_after_first_target: false
+  trail_ticks_beyond_swing: 2
+  stop_buffer_ticks: 2
+  time_exit_minutes: 45
+  volatility_exit_atr_multiple: 3.0
+  lyl_invalidation_r_fraction: 0.25
+  no_chase_r: 1.0
+  retest_tolerance_ticks: 2
+  retest_timeout_bars: 6
+  fakeout_bars: 2
+  entry_stop_offset_ticks: 1
+  momentum_fade_bars: 3
+  entry_order_timeout_bars: 3
+  # After a full stop-out, skip that same direction for this many 5-min bars.
+  cooldown_bars_after_stop: 2
+
+filters:
+  signal_timeframe_minutes: 5
+  volume_lookback: 20
+  volume_multiple: 1.5
+  strong_candle_body_fraction: 0.60
+  # Long: close must sit in the top 30% of the bar, i.e. at least 70% up the range.
+  strong_candle_close_location: 0.70
+  ema_period: 21
+  atr_period: 14
+  overextended_atr: 2.0
+  chop_ema_crosses: 4
+  chop_lookback_bars: 12
+  chop_slope_bars: 6
+  chop_slope_atr_fraction: 0.1
+  swing_bars_each_side: 2
+  round_number_points: 25
+  # Course wants ES and NQ on the same side of VWAP. This bot trades MES only
+  # and does not invent Nasdaq data. Leave false unless you later add those feeds.
+  require_index_agreement: false
+  use_macd_filter: false
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  setup_a_enabled: true
+  # retest (A2, course author's pullback) or classic (A1, breakout market order)
+  setup_a_entry_mode: retest
+  setup_b_enabled: true
+  setup_b_levels:
+    - overnight_high
+    - overnight_low
+    - prior_high
+    - prior_low
+    - prior_close
+    - r1
+    - s1
+    - pp
+    - vwap
+
+news:
+  # Flip this to true on a morning you do not want the bot to trade.
+  no_trade_today: false
+  # Whole days off. Type high-impact days yourself (CPI, NFP, FOMC).
+  # The bot does not download an economic calendar.
+  # Example: "2026-01-14"
+  blackout_dates: []
+  # Optional windows you type yourself, Central Time.
+  # Example:
+  #   - date: "2026-02-11"
+  #     start: "07:28"
+  #     end: "08:00"
+  intraday_blackouts: []
+
+compliance:
+  # High-frequency trading is prohibited at Topstep. These floors sit far above
+  # a scalping bot. A kill switch and the 10:30 flatten ignore the hold timer
+  # because they are emergency exits, not a strategy.
+  min_seconds_between_orders: 60
+  min_hold_seconds: 120
+  # ProjectX API trading is NOT allowed on Topstep Live Funded Accounts.
+  # Leave this empty. The only value that overrides the live-account block is
+  # the exact text on the next line, typed by you, on purpose:
+  # I_UNDERSTAND_PROJECTX_CANNOT_TRADE_TOPSTEP_LIVE_FUNDED_ACCOUNTS
+  allow_live_funded_account_override: ""
+
+runtime:
+  # Orders are sent only when this is true OR you pass --arm on the command line.
+  # Start with false. Set true only when you are sitting at this PC.
+  armed: false
+  # Creating this file (or typing "kill" and Enter) cancels orders and flattens.
+  kill_switch_file: "KILL"
+  log_dir: "logs"
+  # How often practice mode asks the API for new 1-minute bars.
+  poll_seconds: 15
+  # Flatten anything open when the bot starts, so a leftover position is not held.
+  flatten_on_start: true
+  # While MES is in session, practice mode stays flat unless a live quote
+  # arrives within this many seconds.
+  quote_timeout_seconds: 20
+  # Stop the session if ProjectX keeps failing. Five failures, or 30 seconds
+  # of failures, whichever comes first. The bot then prints the open book and exits.
+  api_max_consecutive_failures: 5
+  api_failure_window_seconds: 30
+
+broker:
+  # Practice and Combine use the sim data subscription (live: false).
+  projectx_use_live_data: false

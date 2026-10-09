@@ -1,0 +1,25 @@
+[project]
+name = "topstepbot"
+version = "0.1.0"
+description = "Supervised MES opening-range and key-level day-trading bot for Topstep practice and combine accounts."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "python-dotenv>=1.0",
+    "PyYAML>=6.0",
+    "requests>=2.31",
+    "websockets>=15",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+topstepbot = "topstepbot.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+include = ["topstepbot*"]

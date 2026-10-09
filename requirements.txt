@@ -1,0 +1,8 @@
+python-dotenv>=1.0
+PyYAML>=6.0
+requests>=2.31
+websockets>=15
+pytest>=8.0
+# Official client. 0.68.0 added Python 3.14. pip on CPython 3.14 macOS
+# resolves databento 0.87.0 with databento-dbn 0.70.0 (cp314 wheels).
+databento>=0.68
