@@ -7,6 +7,7 @@ import time
 from topstepbot.broker.readonly import ReadOnlyProjectXClient
 from topstepbot.broker.signalr import (
     FrameBuffer,
+    JsonSignalRClient,
     invocation,
     public_hub_url,
     quote_gate,
@@ -114,3 +115,47 @@ def test_readonly_hub_subscribes_to_quotes_only_and_prints_no_token():
     finally:
         hub.stop()
         assert holder["socket"].closed is True
+
+
+def test_quote_stream_reconnects_after_the_hub_closes():
+    sockets = []
+
+    class ClosingSocket(ScriptedSocket):
+        def __init__(self, close_after: bool):
+            super().__init__()
+            self.close_after = close_after
+
+        async def send(self, data):
+            await super().send(data)
+            if self.close_after and "SubscribeContractQuotes" in data:
+                await self.queue.put('{"type":7,"error":"closed"}\x1e')
+
+    def connector(url):
+        assert TOKEN in url
+        socket = ClosingSocket(close_after=len(sockets) == 0)
+        sockets.append(socket)
+        return socket
+
+    quotes = []
+    notes = []
+    hub = JsonSignalRClient(
+        "https://rtc.topstepx.com/hubs/market",
+        TOKEN,
+        {"GatewayQuote": lambda *args: quotes.append(args)},
+        [("SubscribeContractQuotes", ["CON.F.US.MES.Z26"])],
+        connector=connector,
+        on_status=notes.append,
+        reconnect_seconds=0.05,
+    )
+    hub.start()
+    try:
+        deadline = time.time() + 3
+        while time.time() < deadline and len(quotes) < 2:
+            time.sleep(0.02)
+        assert len(sockets) >= 2
+        assert len(quotes) >= 2
+        assert any("Reconnecting" in note for note in notes)
+        assert any("back" in note for note in notes)
+        assert TOKEN not in " ".join(notes)
+    finally:
+        hub.stop()

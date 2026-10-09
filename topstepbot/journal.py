@@ -57,6 +57,10 @@ class Journal:
         self.logger.info(message)
         self._mirror("info", message)
 
+    def heartbeat(self, message: str) -> None:
+        """Terminal and log file only. The dashboard event list stays for trades."""
+        self.logger.info(message)
+
     def error(self, message: str) -> None:
         self.logger.error(message)
         self._mirror("error", message)

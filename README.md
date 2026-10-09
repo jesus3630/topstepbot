@@ -203,7 +203,20 @@ source .venv/bin/activate
 python -m topstepbot practice --arm
 ```
 
-The page shows armed / watching / in a trade / flat for the day, Central time, the countdown to the 10:30 CT flatten, the MES price, the opening range, today's result, and a plain-English event list. If the bot is not running, the page says so.
+The page shows armed / watching / in a trade / flat for the day, Central time, the countdown to the 10:30 CT flatten, the MES price, the opening range, today's result, and a plain-English event list. The chart is 1-minute prices. The bot decides on 5-minute bars, and the page says so. If the bot process stops sending updates, the page says **The bot process stopped**. If the bot is still running and only the live quotes go quiet, the banner says **QUOTES STALE** and the rest of the page stays up.
+
+The trading window prints a "Still running" line about once a minute, so a quiet stretch is not a mystery. Once a minute is also how often a dropped quote stream tries to reconnect. A 5-minute bar that does not become a trade is written down, including when price closed through the opening range but a filter said no.
+
+## Double-click on the Mac
+
+From the repo folder, copy the two launchers to the Desktop and mark them runnable. Do this once:
+
+```bash
+cp "Start Bot.command" "Stop Bot.command" ~/Desktop/
+chmod +x ~/Desktop/"Start Bot.command" ~/Desktop/"Stop Bot.command"
+```
+
+Then stay at the Mac. Double-click **Start Bot**. It opens two Terminal windows in `/Users/heyzeus/topstepbot`. The first runs `git pull`, activates `.venv`, and starts the dashboard. The second activates `.venv` and runs `python -m topstepbot practice --arm`. That `--arm` is the same "I am here" switch as typing the command yourself. Nothing is scheduled. If you have to leave, double-click **Stop Bot**. It creates the `KILL` file, which flattens and stops the bot.
 
 The red **KILL** button asks you to confirm, then creates the `KILL` file. That is the same flatten as typing `kill` in the bot window. It is the only thing the dashboard writes.
 

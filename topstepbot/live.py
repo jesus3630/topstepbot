@@ -160,6 +160,7 @@ def run_practice(config: BotConfig, armed: bool) -> None:
                 publisher=publisher,
                 engine=engine,
                 broker=broker,
+                on_status=lambda message: journal.info(message),
             )
             decision = quote_gate(quote_count, cme_equity_index_open(datetime.now(CHICAGO)))
             if decision == "arm":
@@ -181,6 +182,7 @@ def run_practice(config: BotConfig, armed: bool) -> None:
             publisher.publish(engine, broker, datetime.now(CHICAGO), force=True)
             watcher = _keyboard_watcher(kill)
             seen = {bar.time for bar in history}
+            last_heartbeat = time.monotonic()
             while True:
                 now = datetime.now(CHICAGO)
                 price = broker.last_price or (history[-1].close if history else 0)
@@ -191,6 +193,9 @@ def run_practice(config: BotConfig, armed: bool) -> None:
                     break
                 action = _poll_once(client, broker, engine, contract["id"], config, seen, now, journal)
                 publisher.publish(engine, broker, now, force=True)
+                if time.monotonic() - last_heartbeat >= 60:
+                    _heartbeat(journal, publisher, broker, engine, now)
+                    last_heartbeat = time.monotonic()
                 if action == "flat":
                     break
                 time.sleep(config.runtime.poll_seconds)
@@ -383,6 +388,25 @@ def _log_book(journal: Journal, positions: list | None, orders: list | None) -> 
             )
 
 
+def _heartbeat(journal: Journal, publisher: SessionPublisher, broker, engine, now: datetime) -> None:
+    """One line a minute so a quiet strategy is not mistaken for a dead process."""
+    price = publisher.quote_price
+    if price is None:
+        price = getattr(broker, "last_price", None)
+    shown = f"{float(price):.2f}" if price is not None else "no price yet"
+    if publisher.quote_at is None:
+        quote = "No live quote yet."
+    else:
+        age = max(0, int((now - publisher.quote_at).total_seconds()))
+        if age > 30:
+            quote = f"Last quote {age}s ago. Quotes look stale. The bot is still running."
+        else:
+            quote = f"Last quote {age}s ago."
+    note = getattr(engine, "last_watch", "") if engine is not None else ""
+    extra = f" Latest 5-minute check: {note}." if note else ""
+    journal.heartbeat(f"Still running. MES {shown}. {quote}{extra}")
+
+
 def _await_live_quotes(
     client: ProjectXClient,
     contract_id: str,
@@ -391,6 +415,7 @@ def _await_live_quotes(
     publisher: SessionPublisher | None = None,
     engine=None,
     broker=None,
+    on_status=None,
 ):
     """Connect to the market hub and wait until one quote arrives, or the timeout.
 
@@ -416,7 +441,7 @@ def _await_live_quotes(
         shown = "market hub"
     journal.info(f"Connecting to {shown}. The access token is not logged.")
     try:
-        hub = client.connect_market_hub(contract_id, on_trade, on_quote)
+        hub = client.connect_market_hub(contract_id, on_trade, on_quote, on_status=on_status)
     except Exception as exc:
         journal.error(f"Market hub failed ({type(exc).__name__}). Staying flat.")
         return None, 0

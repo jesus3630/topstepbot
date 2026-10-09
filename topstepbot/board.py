@@ -37,7 +37,7 @@ def console_text(message: str, level: str = "INFO") -> str:
     return sentence
 
 
-_KINDS = {"SIGNAL", "SKIP", "ORDER", "FILL", "PNL", "KILL", "PLAN"}
+_KINDS = {"SIGNAL", "SKIP", "ORDER", "FILL", "PNL", "KILL", "PLAN", "WATCH", "REPLAY"}
 
 
 def split_message(message: str) -> tuple[str, dict]:
@@ -167,6 +167,8 @@ class SessionPublisher:
         if self.mode in {"starting", "warming"}:
             return
         kind, fields = split_message(message)
+        if kind == "WATCH":
+            self.last_skip = ""
         if kind == "SKIP":
             self.last_skip = fields.get("reason", "")
         when = _event_time(fields)
@@ -265,6 +267,8 @@ def build_state(publisher: SessionPublisher, engine, broker, now: datetime) -> d
         "max_loss_remaining": round(max(0.0, equity - mll_floor), 2),
         "balance": publisher.balance,
         "bars": _bars(engine),
+        "chart_minutes": 1,
+        "signal_minutes": int(config.filters.signal_timeframe_minutes),
         "armed": armed,
         "mode": publisher.mode,
     }
@@ -387,6 +391,15 @@ def _sentence(kind: str, fields: dict, message: str) -> str:
         word = "gain" if pnl >= 0 else "loss"
         reason = _pretty_reason(fields.get("reason", ""))
         return f"Trade closed. {word.capitalize()} of ${abs(pnl):,.2f}. {reason}."
+    if kind == "WATCH":
+        result = fields.get("result") or "no setup"
+        if result == "no setup":
+            minutes = fields.get("timeframe") or "5"
+            return f"{minutes}-minute bar checked. Nothing to do."
+        level = fields.get("level") or "the level"
+        return f"Price closed through {level} on the 5-minute bar, but no order: {result}."
+    if kind == "REPLAY" and fields.get("action") == "flatten":
+        return "Old session replay. No order was sent."
     if kind == "KILL":
         return "Kill switch is on. Flattening and stopping."
     if kind == "PLAN" and "OR_high" in fields:
@@ -439,7 +452,7 @@ def _headline(*, status, pending, position, opening, phase, armed, last_skip, mo
     if status == "CHECKING":
         return "Read-only connection check. This screen cannot place orders."
     if status == "DISCONNECTED":
-        return "No fresh MES quote. Staying flat until prices come back."
+        return "Quotes are stale. The bot is still running."
     if status == "FLAT":
         return "Flat for the day. Done until the next session."
     if position is not None:

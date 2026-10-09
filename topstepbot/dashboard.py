@@ -204,7 +204,7 @@ const TITLES = {
   "FLAT": "FLAT — DONE FOR THE DAY",
   "HALTED": "HALTED",
   "KILLED": "KILLED",
-  "DISCONNECTED": "DISCONNECTED"
+  "DISCONNECTED": "QUOTES STALE"
 };
 const app = document.getElementById("app");
 const modal = document.getElementById("modal");
@@ -313,8 +313,9 @@ function render(data) {
   const stale = !state || data.stale;
   if (stale) {
     app.innerHTML = `<div class="empty">
-      <h1>The bot is not running</h1>
-      <p>No recent update. In the other terminal, from this same folder, start the bot. This page will fill in on its own. It cannot place orders by itself.</p>
+      <h1>The bot process stopped</h1>
+      <p>No recent update from the bot. This is not a stale-quote warning. When the bot is still running and only the prices go quiet, this page stays up and the banner says QUOTES STALE.</p>
+      <p>In the other terminal, from this same folder, start the bot. This page will fill in on its own. It cannot place orders by itself.</p>
       <p><code>python -m topstepbot practice --arm</code></p>
     </div>`;
     showKillNote();
@@ -352,6 +353,7 @@ function render(data) {
     <div class="age ${staleQuote ? "stale" : ""}" id="age"></div>
     <div class="relation" id="relation"></div>
     <div class="range" id="range"></div>
+    <div class="age" id="chartlabel"></div>
     <div id="gauge"></div>
     <div id="chart"></div>`;
   const right = document.createElement("section");
@@ -398,6 +400,10 @@ function render(data) {
   document.getElementById("range").textContent = opening
     ? `Opening range  ${Number(opening.low).toFixed(2)}  –  ${Number(opening.high).toFixed(2)}    ·    long trigger ${Number(opening.high).toFixed(2)}    short trigger ${Number(opening.low).toFixed(2)}`
     : "Opening range not set yet.";
+  const signalMinutes = Number(state.signal_minutes || 5);
+  const chartMinutes = Number(state.chart_minutes || 1);
+  document.getElementById("chartlabel").textContent =
+    `${chartMinutes}-minute prices on this chart. The bot decides on ${signalMinutes}-minute bars.`;
   document.getElementById("gauge").innerHTML = gauge(state.price, opening);
   document.getElementById("chart").innerHTML = candles(state.bars || [], opening);
   document.getElementById("pnl").textContent = money(state.pnl);

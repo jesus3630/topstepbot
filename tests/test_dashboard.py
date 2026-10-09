@@ -19,6 +19,7 @@ from topstepbot.board import (
 from topstepbot.config import load_config
 from topstepbot.dashboard import HOST, bind_server
 from topstepbot.journal import Journal
+from topstepbot.strategy.engine import StrategyEngine
 from topstepbot.models import Bar, DayStats, OpeningRange, Side
 from topstepbot.strategy.engine import PendingBreak
 from topstepbot.timeutil import CHICAGO
@@ -189,7 +190,11 @@ def test_halt_flat_kill_and_stale_quote(tmp_path):
     assert build_state(publisher, _engine(), broker, NOW)["status"] == "KILLED"
     publisher.mode = "live"
     publisher.note_quote(7830.0, NOW - timedelta(seconds=45))
-    assert build_state(publisher, _engine(), broker, NOW)["status"] == "DISCONNECTED"
+    stale_quote = build_state(publisher, _engine(), broker, NOW)
+    assert stale_quote["status"] == "DISCONNECTED"
+    assert stale_quote["headline"] == "Quotes are stale. The bot is still running."
+    assert stale_quote["signal_minutes"] == 5
+    assert stale_quote["chart_minutes"] == 1
     early = datetime(2026, 10, 8, 8, 0, tzinfo=CHICAGO)
     before = build_state(publisher, None, None, early)
     assert before["countdown_label"] == "Session starts in"
@@ -236,6 +241,9 @@ def test_dashboard_binds_localhost_and_kill_needs_confirm(tmp_path):
         assert "KILL" in page
         assert "0.0.0.0" not in page
         # The page redraws every second. The kill sentence has to live outside that redraw.
+        assert "The bot process stopped" in page
+        assert "QUOTES STALE" in page
+        assert "chartlabel" in page
         assert "let killNote" in page
         assert "showKillNote()" in page
         assert "Kill sent. The bot will flatten and stop." in page
@@ -270,3 +278,77 @@ def test_dashboard_binds_localhost_and_kill_needs_confirm(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_replay_flatten_is_not_called_an_order(tmp_path, capsys):
+    class ReplayBroker:
+        name = "projectx"
+        orders_enabled = False
+
+        def flatten(self, price, when, reason="flatten"):
+            return []
+
+    journal = Journal(tmp_path, clock=NOW)
+    engine = StrategyEngine(CONFIG, ReplayBroker(), journal, armed=False)
+    engine._flatten(7809.75, NOW, "session flatten")
+    saved = journal.path.read_text(encoding="utf-8")
+    assert "REPLAY action=flatten" in saved
+    assert "not_sent=true" in saved
+    assert "ORDER action=flatten" not in saved
+    shown = capsys.readouterr().err
+    assert "No order was sent" in shown
+    assert "ORDER" not in shown
+
+
+def test_live_flatten_is_still_an_order(tmp_path):
+    class LiveBroker:
+        name = "projectx"
+        orders_enabled = True
+
+        def flatten(self, price, when, reason="flatten"):
+            return []
+
+    journal = Journal(tmp_path, clock=NOW)
+    engine = StrategyEngine(CONFIG, LiveBroker(), journal, armed=True)
+    engine._flatten(7846.50, NOW, "session flatten")
+    saved = journal.path.read_text(encoding="utf-8")
+    assert "ORDER action=flatten" in saved
+    assert "REPLAY" not in saved
+
+
+def test_watch_sentence_and_clears_a_stale_skip(tmp_path):
+    sentence = console_text(
+        "WATCH bar=2026-10-09T09:50:00-05:00 timeframe=5 level=or_high side=long "
+        "result=volume is not strong enough"
+    )
+    assert sentence == "Price closed through or_high on the 5-minute bar, but no order: volume is not strong enough."
+    assert "state=" not in sentence
+    publisher = _publisher(tmp_path)
+    publisher.record("info", "SKIP reason=chop filter bar=2026-10-09T09:30:00-05:00")
+    assert publisher.last_skip == "chop filter"
+    publisher.record("info", "WATCH bar=2026-10-09T09:35:00-05:00 timeframe=5 result=no setup")
+    assert publisher.last_skip == ""
+
+
+def test_heartbeat_stays_out_of_the_event_feed(tmp_path, capsys):
+    journal = Journal(tmp_path, clock=NOW)
+    seen = []
+    journal.sink = lambda level, message: seen.append(message)
+    journal.heartbeat("Still running. MES 7846.50. Last quote 4s ago.")
+    assert seen == []
+    assert "Still running" in journal.path.read_text(encoding="utf-8")
+    assert "Still running" in capsys.readouterr().err
+
+
+def test_launchers_open_the_two_windows_and_write_kill():
+    root = __import__("pathlib").Path(__file__).resolve().parents[1]
+    start = (root / "Start Bot.command").read_text(encoding="utf-8")
+    stop = (root / "Stop Bot.command").read_text(encoding="utf-8")
+    assert "/Users/heyzeus/topstepbot" in start
+    assert "git pull" in start
+    assert "python -m topstepbot dashboard" in start
+    assert "python -m topstepbot practice --arm" in start
+    assert "0.0.0.0" not in start
+    assert 'printf \'launcher stop\\n\' > "$ROOT/KILL"' in stop
+    assert start.startswith("#!/bin/bash")
+    assert stop.startswith("#!/bin/bash")

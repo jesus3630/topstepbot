@@ -120,6 +120,7 @@ class StrategyEngine:
         self.last_order_at: datetime | None = None
         self.cooldown_until: dict[Side, int] = {Side.LONG: -1, Side.SHORT: -1}
         self.skips: dict[str, int] = {}
+        self.last_watch = ""
         self.equity_curve: list[tuple[datetime, float]] = []
         self.daily_pnl: dict[date, float] = {}
         self.daily_mtm_low: dict[date, float] = {}
@@ -306,9 +307,13 @@ class StrategyEngine:
             return
         if self._chop():
             self._skip("chop filter", bar)
+            self.last_watch = "chop filter"
             return
+        before = dict(self.skips)
         signal_side = self._arm_breaks(bar, index)
         if signal_side is None:
+            if self.skips == before:
+                self._narrate_quiet_bar(bar)
             return
         self._try_enter(signal_side, decision_time)
 
@@ -729,8 +734,17 @@ class StrategyEngine:
         self.journal.order(action="cancel_entry", reason=reason)
 
     def _flatten(self, price: float, when: datetime, reason: str) -> None:
+        # Warmup replays old 10:30 flattens through the same function. The live
+        # broker refuses them while orders_enabled is false, so the log must
+        # not call that a real order.
+        sent = bool(getattr(self.broker, "orders_enabled", True))
         fills = self.broker.flatten(price, when, reason)
-        self.journal.order(action="flatten", reason=reason, price=f"{price:.2f}")
+        if sent:
+            self.journal.order(action="flatten", reason=reason, price=f"{price:.2f}")
+        else:
+            self.journal.info(
+                f"REPLAY action=flatten reason={reason} price={price:.2f} not_sent=true"
+            )
         self._consume(fills)
         if self.trade is not None:
             self._close_logical(when, reason)
@@ -891,23 +905,62 @@ class StrategyEngine:
         )
 
     def _break_is_valid(self, bar: Bar, level: float, side: Side) -> bool:
+        return self._break_block_reason(bar, level, side) is None
+
+    def _narrate_quiet_bar(self, bar: Bar) -> None:
+        """Say why a live 5-minute bar did not become an order. Does not trade."""
+        if not self._should_narrate():
+            return
+        stamp = bar.time.isoformat()
+        minutes = self.config.filters.signal_timeframe_minutes
+        opening = self.opening
+        if opening is not None and bar.close > opening.high:
+            reason = self._break_block_reason(bar, opening.high, Side.LONG)
+            if reason:
+                self.last_watch = reason
+                self.journal.info(
+                    f"WATCH bar={stamp} timeframe={minutes} level=or_high side=long result={reason}"
+                )
+                return
+        if opening is not None and bar.close < opening.low:
+            reason = self._break_block_reason(bar, opening.low, Side.SHORT)
+            if reason:
+                self.last_watch = reason
+                self.journal.info(
+                    f"WATCH bar={stamp} timeframe={minutes} level=or_low side=short result={reason}"
+                )
+                return
+        self.last_watch = "no setup"
+        self.journal.info(f"WATCH bar={stamp} timeframe={minutes} result=no setup")
+
+    def _should_narrate(self) -> bool:
+        # Practice only, and only after warmup has turned orders back on.
+        # Backtests stay quiet. A replayed historical day is not "right now".
+        return (
+            self.armed
+            and getattr(self.broker, "name", "") == "projectx"
+            and bool(getattr(self.broker, "orders_enabled", False))
+        )
+
+    def _break_block_reason(self, bar: Bar, level: float, side: Side) -> str | None:
+        """Why this bar is not a valid break. None means the break is valid."""
         filters = self.config.filters
         closes = [b.close for b in self.bars_5]
         emas = ema(closes, filters.ema_period)
         atrs = atr(self.bars_5, filters.atr_period)
-        ema_now = emas[-1]
-        atr_now = atrs[-1]
+        ema_now = emas[-1] if emas else None
+        atr_now = atrs[-1] if atrs else None
         if ema_now is None or atr_now is None or self.vwap is None:
-            return False
+            return "indicators are not ready"
         if side is Side.LONG and not (bar.close > self.vwap and bar.close > ema_now):
-            return False
+            return "not above the 5-minute average and VWAP"
         if side is Side.SHORT and not (bar.close < self.vwap and bar.close < ema_now):
-            return False
+            return "not below the 5-minute average and VWAP"
         if abs(bar.close - ema_now) > filters.overextended_atr * atr_now:
-            return False
+            return "too far from the 5-minute average"
         volumes = [b.volume for b in self.bars_5]
         if not volume_confirmed(volumes, filters.volume_lookback, filters.volume_multiple):
-            return False
+            return "volume is not strong enough"
         if not is_strong_break(
             bar,
             level,
@@ -916,18 +969,18 @@ class StrategyEngine:
             filters.strong_candle_body_fraction,
             filters.strong_candle_close_location,
         ):
-            return False
+            return "5-minute candle is not a strong close through the level"
         if filters.use_macd_filter:
             _line, _sig, hist = macd(closes, filters.macd_fast, filters.macd_slow, filters.macd_signal)
             if hist[-1] is None:
-                return False
+                return "indicators are not ready"
             if side is Side.LONG and hist[-1] <= 0:
-                return False
+                return "momentum is not with the long"
             if side is Side.SHORT and hist[-1] >= 0:
-                return False
+                return "momentum is not with the short"
         if self._side_blocked(side, len(self.bars_5) - 1):
-            return False
-        return True
+            return "that direction is on cooldown"
+        return None
 
     def _closed_back_through(self, bar: Bar, item: PendingBreak) -> bool:
         if item.side is Side.LONG:

@@ -303,7 +303,13 @@ class ProjectXClient:
         self._raise_if_failed(body, "trade search")
         return list(body.get("trades") or [])
 
-    def connect_market_hub(self, contract_id: str, on_trade: Callable, on_quote: Callable | None = None):
+    def connect_market_hub(
+        self,
+        contract_id: str,
+        on_trade: Callable,
+        on_quote: Callable | None = None,
+        on_status: Callable | None = None,
+    ):
         """Subscribe to market trades and quotes on wss://rtc.topstepx.com/hubs/market.
 
         Subscriptions are sent inside the handshake task. The returned client
@@ -318,7 +324,13 @@ class ProjectXClient:
         if on_quote is not None:
             handlers["GatewayQuote"] = lambda *args: on_quote(*args)
             subscriptions.insert(0, ("SubscribeContractQuotes", [contract_id]))
-        hub = JsonSignalRClient(self.market_hub_url, self.token, handlers, subscriptions)
+        hub = JsonSignalRClient(
+            self.market_hub_url,
+            self.token,
+            handlers,
+            subscriptions,
+            on_status=on_status,
+        )
         hub.start()
         return hub
 

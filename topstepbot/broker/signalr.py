@@ -103,6 +103,8 @@ class JsonSignalRClient:
         handlers: dict[str, Callable],
         subscriptions: list[tuple[str, list]],
         connector: Callable | None = None,
+        on_status: Callable[[str], None] | None = None,
+        reconnect_seconds: float = 2.0,
     ) -> None:
         self.public_url = public_hub_url(base_url)
         self._base_url = base_url
@@ -110,7 +112,10 @@ class JsonSignalRClient:
         self._handlers = handlers
         self._subscriptions = list(subscriptions)
         self._connector = connector
+        self._on_status = on_status
+        self.reconnect_seconds = reconnect_seconds
         self.error: BaseException | None = None
+        self._connected = False
         self._user_stop = False
         self._ready = threading.Event()
         self._thread: threading.Thread | None = None
@@ -124,7 +129,8 @@ class JsonSignalRClient:
         if not self._ready.wait(timeout):
             self.stop()
             raise ProjectXError(f"Market hub handshake timed out ({self.public_url})")
-        if self.error is not None and not self._user_stop:
+        # A drop after the handshake is a reconnect, not a failed start.
+        if self.error is not None and not self._user_stop and not self._connected:
             raise ProjectXError(redact_token(self.error, self._token))
 
     def stop(self) -> None:
@@ -152,18 +158,45 @@ class JsonSignalRClient:
     async def _main(self) -> None:
         self._loop = asyncio.get_running_loop()
         self._stop_async = asyncio.Event()
-        url = connect_hub_url(self._base_url, self._token)
-        try:
-            connection = self._open(url)
-            async with connection as socket:
-                await self._handshake_and_subscribe(socket)
+        connected_once = False
+        delay = max(0.0, self.reconnect_seconds)
+        while not self._user_stop and self._stop_async is not None and not self._stop_async.is_set():
+            try:
+                url = connect_hub_url(self._base_url, self._token)
+                connection = self._open(url)
+                async with connection as socket:
+                    await self._handshake_and_subscribe(socket)
+                    self.error = None
+                    self._connected = True
+                    self._ready.set()
+                    if connected_once:
+                        self._status("Quote stream is back.")
+                    connected_once = True
+                    delay = max(0.0, self.reconnect_seconds)
+                    await self._read_until_stop(socket)
+            except Exception as exc:
+                if self.error is None and not self._user_stop:
+                    self.error = exc
                 self._ready.set()
-                await self._read_until_stop(socket)
-        except Exception as exc:
-            if self.error is None and not self._user_stop:
-                self.error = exc
-        finally:
-            self._ready.set()
+            if self._user_stop or self._stop_async.is_set() or not connected_once:
+                break
+            self._status("Quote stream dropped. Reconnecting.")
+            try:
+                await asyncio.wait_for(self._stop_async.wait(), timeout=delay)
+                break
+            except asyncio.TimeoutError:
+                pass
+            delay = min(max(delay * 2, 0.05), 30)
+            self.error = None
+
+    def _status(self, message: str) -> None:
+        callback = self._on_status
+        if callback is None:
+            return
+        try:
+            callback(message)
+        except Exception:
+            return
 
     def _open(self, url: str):
         if self._connector is not None:
