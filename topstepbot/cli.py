@@ -76,10 +76,15 @@ def main(argv: list[str] | None = None) -> int:
 
     fetch_db = sub.add_parser(
         "fetch-databento",
-        help="Download long MES 1-minute history from Databento. Cannot place orders.",
+        help="Download long 1-minute history from Databento. Cannot place orders.",
     )
     fetch_db.add_argument("--start", required=True, help="First day as a UTC date, for example 2019-05-01.")
     fetch_db.add_argument("--end", default="", help="Exclusive UTC end date. Default is the latest available bar.")
+    fetch_db.add_argument(
+        "--symbol",
+        default="MES.v.0",
+        help="Databento continuous symbol. Default MES.v.0. Example: MNQ.v.0.",
+    )
     fetch_db.add_argument("--out", default="data/mes_1m_databento.csv")
     fetch_db.add_argument(
         "--max-cost",
@@ -135,12 +140,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "fetch-databento":
         from topstepbot.databentofetch import fetch_databento
 
+        symbol = str(args.symbol).strip()
+        if not symbol:
+            raise SystemExit("The symbol is empty. Nothing was downloaded.")
         fetch_databento(
             start=args.start,
             end=args.end or None,
             out=args.out,
             max_cost=args.max_cost,
             yes=args.yes,
+            symbol=symbol,
         )
         return 0
     return 1

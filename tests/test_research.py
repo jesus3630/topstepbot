@@ -10,11 +10,12 @@ import pytest
 
 from research.calendar import cash_session, split_days
 from research.combine import run_attempt, summarize_attempts
-from research.costs import FEE_ROUND_TURN, contracts_for_stop
+from research.costs import FEE_ROUND_TURN, MES, MNQ, active_instrument, contracts_for_stop
 from research.market import Day, load_days
 from research.simulate import simulate
 from research.stats import empty_summary, train_ok, val_ok
-from research.strategies import all_specs, neighbors_of, run_days, select
+from research.report import _cost_paragraph
+from research.strategies import all_specs, grid_text, neighbors_of, run_days, select
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -211,6 +212,13 @@ def test_research_size_uses_both_slippage_sides_and_the_real_fee():
     assert contracts_for_stop(100) == 0
     assert contracts_for_stop(0.01, risk=100_000) == 50
     assert contracts_for_stop(0.5, slip_ticks_round_turn=1) == 40
+    assert MES.tick_value == pytest.approx(1.25)
+    assert MNQ.tick == pytest.approx(0.25)
+    assert MNQ.point_value == pytest.approx(2.0)
+    assert MNQ.tick_value == pytest.approx(0.50)
+    assert MNQ.fee_round_turn == pytest.approx(1.22)
+    # 0.50 * $2 + 2 ticks * $0.50 + $1.22 = $3.22; 200 / 3.22 = 62, then the cap of 50.
+    assert contracts_for_stop(0.5, fee=MNQ.fee_round_turn, tick=MNQ.tick, point_value=MNQ.point_value) == 50
 
 
 def test_live_fee_and_retest_are_unchanged():
@@ -329,6 +337,15 @@ def test_orb_enters_on_the_bar_after_the_break_and_not_during_the_range():
     trades = run_days([day], spec)
     assert len(trades) == 1
     assert trades[0].entry == pytest.approx(102.25)
+    # 1-point stop: MES cost $8.72 sizes 22; MNQ cost $4.22 sizes 47. Same fill price.
+    assert trades[0].qty == 22
+    mnq = run_days([day], spec, instrument="MNQ")
+    assert len(mnq) == 1
+    assert mnq[0].entry == pytest.approx(102.25)
+    assert mnq[0].qty == 47
+    assert mnq[0].pnl == pytest.approx(-1.5 * MNQ.point_value * 47 - MNQ.fee_round_turn * 47)
+    assert trades[0].pnl == pytest.approx(-1.5 * MES.point_value * 22 - MES.fee_round_turn * 22)
+    assert active_instrument().code == "MES"
 
     closes[24] = 101.0
     flat = _session_day(closes, opens=opens, or_high={15: 101.0}, or_low={15: 99.0})
@@ -336,6 +353,17 @@ def test_orb_enters_on_the_bar_after_the_break_and_not_during_the_range():
 
 
 def test_grid_is_the_predeclared_66_and_neighbors_are_one_step():
+    mes_grid = grid_text()
+    assert "TopstepX MES round turn is $1.22 (commission $0.50 + exchange $0.70 + NFA $0.02)" in mes_grid
+    assert "1 tick ($1.25)" in mes_grid
+    assert "at most 50 MES" in mes_grid
+    mnq_grid = grid_text("MNQ")
+    assert "TopstepX MNQ round turn is $1.22" in mnq_grid
+    assert "1 tick ($0.50)" in mnq_grid
+    assert "at most 50 MNQ" in mnq_grid
+    assert "$1.25" not in mnq_grid
+    assert "$2.22" in _cost_paragraph(MNQ)
+    assert "$3.72" in _cost_paragraph(MES)
     specs = all_specs()
     assert len(specs) == 66
     assert sum(item.eligible for item in specs) == 63

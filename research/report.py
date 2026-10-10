@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from research.costs import FEE_ROUND_TURN, FEE_SOURCE, POINT_VALUE
+from research.costs import FEE_SOURCE, active_instrument
 from research.strategies import P_VALUE_CUTOFF, grid_text
 
 
@@ -33,12 +33,13 @@ def _pct(value) -> str:
 def _points_dollars(points) -> str:
     if points is None:
         return "—"
-    dollars = points * POINT_VALUE
+    inst = active_instrument()
+    dollars = points * inst.point_value
     if abs(dollars) < 0.5:
         dollars_txt = "$0"
     else:
         dollars_txt = f"${dollars:.0f}"
-    return f"{points:.2f} pts ({dollars_txt} on 1 MES)"
+    return f"{points:.2f} pts ({dollars_txt} on 1 {inst.code})"
 
 
 def write_charts(profile: dict, equity: dict, combine: dict | None, directory: Path) -> dict:
@@ -89,8 +90,9 @@ def _profile_chart(plt, profile, path: Path) -> None:
         else:
             colors.append("#3d6f99")
     ax.bar([row["clock"] for row in rows], [row["median_range"] for row in rows], color=colors, width=0.8)
-    ax.axhline(FEE_ROUND_TURN / POINT_VALUE + 0.5, color="#444444", linewidth=0.8, linestyle="--")
-    ax.set_title("MES median range by 30 minutes, 7:30–15:00 CT")
+    inst = active_instrument()
+    ax.axhline(inst.fee_round_turn / inst.point_value + 0.5, color="#444444", linewidth=0.8, linestyle="--")
+    ax.set_title(f"{inst.code} median range by 30 minutes, 7:30–15:00 CT")
     ax.set_ylabel("Median range (points)")
     ax.tick_params(axis="x", labelrotation=90)
     ax.legend(
@@ -155,9 +157,50 @@ def _combine_chart(plt, combine: dict, path: Path) -> None:
     plt.close(fig)
 
 
+def _cost_paragraph(inst) -> str:
+    if inst.code == "MES":
+        return (
+            f"TopstepX lists the Micro E-mini S&P 500 round turn at **$1.22** "
+            f"($0.50 commission, $0.70 exchange, $0.02 NFA), read from {FEE_SOURCE} on 2026-10-10. "
+            "The October 2026 CME increase on that page is MCL and MNG, not MES. "
+            "A market or stop order also pays 1 tick against the trader on the way in and, if it exits by stop or by a flatten, 1 tick on the way out. "
+            f"That is **$3.72** all-in for a market round turn on one MES. A limit that is filled only when price trades through it pays no entry slippage. "
+            "The live config still says $1.40. This study does not edit that file."
+        )
+    slip = inst.tick_value
+    all_in = inst.fee_round_turn + 2 * slip
+    return (
+        f"TopstepX lists the Micro E-mini Nasdaq-100 round turn at **${inst.fee_round_turn:.2f}**, "
+        f"read from {FEE_SOURCE} on 2026-10-10. The page shows that total beside MES and does not print a separate "
+        "commission, exchange, and NFA split for MNQ. "
+        "The October 2026 CME increase on that page is MCL and MNG, not MNQ. "
+        "A market or stop order also pays 1 tick against the trader on the way in and, if it exits by stop or by a flatten, 1 tick on the way out. "
+        f"That is **${all_in:.2f}** all-in for a market round turn on one {inst.code} "
+        f"(the fee plus two ticks at ${slip:.2f}). A limit that is filled only when price trades through it pays no entry slippage. "
+        "The live config still says $1.40. This study does not edit that file."
+    )
+
+
+def _account_paragraph(inst) -> str:
+    if inst.code == "MES":
+        other = (
+            "MNQ and M2K were not tested. There is no second data file, and adding one would not have been a small side check."
+        )
+    else:
+        other = f"This run prices {inst.code}. M2K was not tested."
+    return (
+        "The account rules used here are the 50K Combine: $3,000 profit target, $1,000 daily loss limit, "
+        f"$2,000 end-of-day trailing max loss, at most 50 {inst.code}, and flat by 3:10 PM CT. "
+        "Passing also requires the best day to be under half of the profits. The later payout path uses 40% instead of 50%; that stricter test is reported beside the Combine result, and it is not what decides a pass. "
+        "Size in this study risks $200 a trade, skips the trade if one contract cannot fit, takes at most two trades a day, and stops opening new trades once the day is down $400. "
+        + other
+    )
+
+
 def render(ctx: dict) -> str:
+    inst = active_instrument()
     lines = []
-    lines.append("# MES research: when it moves, and which simple rules survive")
+    lines.append(f"# {inst.code} research: when it moves, and which simple rules survive")
     lines.append("")
     lines.append(_lead(ctx))
     lines.append("")
@@ -165,22 +208,9 @@ def render(ctx: dict) -> str:
     lines.append("")
     lines.append("## Costs, hours, and the Combine")
     lines.append("")
-    lines.append(
-        f"TopstepX lists the Micro E-mini S&P 500 round turn at **$1.22** "
-        f"($0.50 commission, $0.70 exchange, $0.02 NFA), read from {FEE_SOURCE} on 2026-10-10. "
-        "The October 2026 CME increase on that page is MCL and MNG, not MES. "
-        "A market or stop order also pays 1 tick against the trader on the way in and, if it exits by stop or by a flatten, 1 tick on the way out. "
-        f"That is **$3.72** all-in for a market round turn on one MES. A limit that is filled only when price trades through it pays no entry slippage. "
-        "The live config still says $1.40. This study does not edit that file."
-    )
+    lines.append(_cost_paragraph(inst))
     lines.append("")
-    lines.append(
-        "The account rules used here are the 50K Combine: $3,000 profit target, $1,000 daily loss limit, "
-        "$2,000 end-of-day trailing max loss, at most 50 MES, and flat by 3:10 PM CT. "
-        "Passing also requires the best day to be under half of the profits. The later payout path uses 40% instead of 50%; that stricter test is reported beside the Combine result, and it is not what decides a pass. "
-        "Size in this study risks $200 a trade, skips the trade if one contract cannot fit, takes at most two trades a day, and stops opening new trades once the day is down $400. "
-        "MNQ and M2K were not tested. There is no second data file, and adding one would not have been a small side check."
-    )
+    lines.append(_account_paragraph(inst))
     lines.append("")
     lines.append("## The rules were written down first")
     lines.append("")
@@ -200,7 +230,7 @@ def render(ctx: dict) -> str:
     load = ctx["load"]
     splits = ctx["splits"]
     lines.append(
-        f"The file is unadjusted Databento `MES.v.0` 1-minute bars, {load['first']} through {load['last']}: "
+        f"The file is unadjusted Databento `{inst.continuous}` 1-minute bars, {load['first']} through {load['last']}: "
         f"{load['bars']:,} bars, {load['sessions']:,} cash sessions, {load['rolls']} contract changes, {load['contracts']} outright labels. "
         "A roll is a real gap, so each cash session is cut to the outright that is trading at 8:30 CT. "
         "Prior-day high, low, and close carry forward only when yesterday's cash close was the same outright. "
@@ -218,7 +248,7 @@ def render(ctx: dict) -> str:
         "The holdout was not used to choose the grid, to drop a neighbor, or to pick the finalists."
     )
     lines.append("")
-    lines.append("## What time of day MES actually moves")
+    lines.append(f"## What time of day {inst.code} actually moves")
     lines.append("")
     lines.extend(_times(ctx["profile"]))
     lines.append("")
@@ -275,7 +305,7 @@ def render(ctx: dict) -> str:
     lines.append(
         "Live defaults are untouched: the 2-tick retest, the $1.40 fee placeholder, the $200 risk, the 2-contract cap, the morning window, and the flatten times. "
         "Research limit fills are stricter than the paper broker. The paper broker fills a target when price touches it. This study fills a limit only when price trades through it. Stops still fill on a touch, and if a stop and a target are in the same bar the stop wins. "
-        "The research sizer is also separate. It can use up to 50 MES and it charges both sides of slippage up front. It does not call the live sizer, which is capped at 2 MES."
+        f"The research sizer is also separate. It can use up to 50 {inst.code} and it charges both sides of slippage up front. It does not call the live sizer, which is capped at 2 MES."
     )
     lines.append("")
     return "\n".join(lines) + "\n"
@@ -571,7 +601,7 @@ def _combine_section(ctx: dict) -> list[str]:
 def _null_section(ctx: dict) -> list[str]:
     null = ctx["null"]
     lines = [
-        "Two buy-and-hold benchmarks buy one direction at 8:30 and flatten at 15:00. One has no stop and is always 1 MES. The other uses a 20-point stop and the $200 sizer. "
+        f"Two buy-and-hold benchmarks buy one direction at 8:30 and flatten at 15:00. One has no stop and is always 1 {active_instrument().code}. The other uses a 20-point stop and the $200 sizer. "
         "The random benchmark flips a coin from the session date (seed 7), enters at 9:00 with an 8-point stop and an 8-point target, and flattens at 10:30. "
         "One hundred more seeds, 1000 through 1099, were run on train and validation only.",
         "",

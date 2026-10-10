@@ -33,7 +33,13 @@ CONSISTENCY_CAP = 0.40
 # Predeclared what-if. Not tuned on the file, and not written into the config.
 RETEST_WHAT_IF_TICKS = 8
 _CODE_MONTH = {"H": 3, "M": 6, "U": 9, "Z": 12}
-_CONTRACT_RE = re.compile(r"(?:^MES\.|^MES)([HMUZ])(\d{1,2})$", re.IGNORECASE)
+# Longer roots first so MES is not read as ES. Databento writes MNQH4:id the
+# same way it writes MESU4:id. ProjectX ids look like CON.F.US.MNQ.H25.
+_CONTRACT_ROOTS = ("MES", "MNQ", "M2K", "MYM", "RTY", "ES", "NQ", "YM")
+_CONTRACT_RE = re.compile(
+    r"(?:^|[^A-Z0-9])(?:" + "|".join(_CONTRACT_ROOTS) + r")\.?([HMUZ])(\d{1,2})$",
+    re.IGNORECASE,
+)
 _UNADJUSTED = (
     " Prices are the outright prints, not back-adjusted. "
     "Indicators, VWAP, and the opening range start over when the contract changes."

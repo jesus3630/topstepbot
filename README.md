@@ -179,11 +179,12 @@ cd /Users/heyzeus/topstepbot
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python -m topstepbot fetch-databento --start 2019-05-01 --out data/mes_1m_databento.csv
+python -m topstepbot fetch-databento --symbol MNQ.v.0 --start 2019-05-01 --out data/mnq_1m_databento.csv
 ```
 
 Before any bars are downloaded, the command calls Databento `metadata.get_cost` and prints the exact price in US dollars. If that price is above $20, it stops and writes nothing. Pass `--yes` to download anyway, or raise the cap with `--max-cost 40`. A date is midnight UTC, and the end is exclusive. The CSV timestamps are Central time. Columns match `fetch-history`: `timestamp,open,high,low,close,volume,contract`.
 
-The symbol is `MES.v.0` on dataset `GLBX.MDP3`, schema `ohlcv-1m`, continuous symbology. The `v` rule is the front month by the previous day's volume. `MES.c.0` follows the calendar expiry and can stay on a quiet month after the volume has moved, so it is not used. `MES.n.0` would rank by open interest. Prices are the original outright prints. Databento does not back-adjust them, so a roll is a real gap. The contract column is the outright symbol plus the instrument id (`MESU4:12345`). An instrument id is only unique within one day, which is why both are stored. A continuous symbol can only be resolved to an instrument id; the outright name comes from a free symbology lookup.
+`--symbol` defaults to `MES.v.0`. `MNQ.v.0` is the same download for Micro Nasdaq. The contract column is still the outright plus the instrument id (`MNQH4:12345`), and a change in that column is still a roll. Dataset `GLBX.MDP3`, schema `ohlcv-1m`, continuous symbology. The `v` rule is the front month by the previous day's volume. `MES.c.0` follows the calendar expiry and can stay on a quiet month after the volume has moved, so it is not used. `MES.n.0` would rank by open interest. Prices are the original outright prints. Databento does not back-adjust them, so a roll is a real gap. An instrument id is only unique within one day, which is why both are stored. A continuous symbol can only be resolved to an instrument id; the outright name comes from a free symbology lookup.
 
 If the command stops, run it again with the same `--out`. Bars already in the file are kept, and the next cost quote is only for the remaining span. The file is large. It is gitignored. Do not commit it.
 
@@ -193,11 +194,11 @@ Then:
 python -m topstepbot history-report --csv data/mes_1m_databento.csv
 ```
 
-When the contract column changes, the replay closes any open paper position at the old contract's last price and starts the EMA, ATR, VWAP, swings, and the opening range over. Prior-day levels from the old outright are not carried onto the new price. Equity and the trailing max-loss floor are not reset. Live bars leave the contract blank, so this does not change the live bot. `config/settings.yaml` is not changed.
+When the contract column changes, the replay closes any open paper position at the old contract's last price and starts the EMA, ATR, VWAP, swings, and the opening range over. Prior-day levels from the old outright are not carried onto the new price. That reset follows the contract string, so an MNQ file rolls the same way an MES file does. Equity and the trailing max-loss floor are not reset. Live bars leave the contract blank, so this does not change the live bot. `config/settings.yaml` is not changed. `history-report` still values the trades with the live MES settings ($5 a point, the $1.40 fee). It does not switch to MNQ dollars.
 
 ## Research note
 
-[docs/RESEARCH.md](docs/RESEARCH.md) is a separate study of when MES moves and whether any simple predeclared day-trade survived 2019–2023, then 2024 through mid-2025, then a holdout. It does not change the live strategy. Charts and the grid are under `docs/research/`. Re-running it needs the long CSV plus `requirements-research.txt` (numpy and matplotlib). The command is `python -m research.run`.
+[docs/RESEARCH.md](docs/RESEARCH.md) is a separate study of when MES moves and whether any simple predeclared day-trade survived 2019–2023, then 2024 through mid-2025, then a holdout. It does not change the live strategy. Charts and the grid are under `docs/research/`. Re-running it needs the long CSV plus `requirements-research.txt` (numpy and matplotlib). The command is `python -m research.run`. `python -m research.run --instrument MNQ` prices the same 63 rules with MNQ's tick (0.25), point value ($2, so $0.50 a tick), and the published TopstepX MNQ round turn of $1.22. The default is MES ($5 a point, $1.25 a tick, $1.22 round turn). That flag is what prices an MNQ file. `history-report` does not.
 
 A pip dry-run for CPython 3.14 on macOS (Apple silicon and Intel) installs `databento` 0.87.0 with `databento-dbn` 0.70.0, pandas, numpy, and pyarrow (checked 2026-10-09). Python 3.14 support in the client started at 0.68.0. This command only reads history. It cannot place an order.
 
@@ -367,7 +368,7 @@ If a bracket is rejected because the account is in Position Brackets mode, the d
 | `topstepbot/broker/projectx.py` | ProjectX gateway client (can send orders) |
 | `topstepbot/broker/readonly.py` | Read-only client used by `check` and `fetch-history` |
 | `topstepbot/historyfetch.py` | Resume-safe MES history download. Cannot place orders |
-| `topstepbot/databentofetch.py` | Databento MES history (`MES.v.0`). Cost check before download |
+| `topstepbot/databentofetch.py` | Databento history (`--symbol`, default `MES.v.0`). Cost check before download |
 | `topstepbot/historyreport.py` | Strategy report on a real CSV. Does not change settings |
 | `research/` | Offline study of MES times and predeclared rules. Does not place orders |
 | `docs/RESEARCH.md` | Plain-English result of that study |

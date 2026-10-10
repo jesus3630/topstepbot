@@ -233,6 +233,114 @@ def test_resume_prices_only_the_remainder_and_clamps_to_availability(tmp_path):
     assert "available from" in " ".join(notes)
 
 
+def test_mnq_symbol_is_what_cost_and_bars_receive(tmp_path):
+    moment = datetime(2019, 5, 1, 14, 30, tzinfo=UTC)
+    client = FakeDatabento(
+        cost=4,
+        rows=[(moment, 18_000.25, 18_001.0, 17_999.5, 18_000.5, 9, 7, "MNQH4")],
+    )
+    lines = []
+    count = fetch_databento(
+        start="2019-05-01",
+        end="2019-05-03",
+        out=tmp_path / "mnq.csv",
+        symbol=" MNQ.v.0 ",
+        client=client,
+        say=lines.append,
+    )
+    assert count == 1
+    cost_call = next(call for call in client.calls if isinstance(call, tuple) and call[0] == "cost")
+    bars_call = next(call for call in client.calls if isinstance(call, tuple) and call[0] == "bars")
+    assert cost_call[3] == "MNQ.v.0"
+    assert bars_call[3] == "MNQ.v.0"
+    assert "MNQ.v.0" in " ".join(lines)
+    with (tmp_path / "mnq.csv").open(encoding="utf-8", newline="") as handle:
+        row = next(csv.DictReader(handle))
+    assert row["contract"] == "MNQH4:7"
+    assert float(row["open"]) == pytest.approx(18000.25)
+    with pytest.raises(SystemExit, match="empty"):
+        fetch_databento(start="2019-05-01", symbol="  ", client=FakeDatabento(), out=tmp_path / "no.csv", say=lines.append)
+
+
+def test_cli_symbol_defaults_to_mes_and_passes_mnq(monkeypatch, tmp_path):
+    from topstepbot.cli import main
+
+    seen = {}
+
+    def fake(**kwargs):
+        seen.update(kwargs)
+        return 3
+
+    monkeypatch.setattr("topstepbot.databentofetch.fetch_databento", fake)
+    out = tmp_path / "mnq.csv"
+    assert main(["fetch-databento", "--symbol", "MNQ.v.0", "--start", "2019-05-01", "--out", str(out)]) == 0
+    assert seen["symbol"] == "MNQ.v.0"
+    assert seen["start"] == "2019-05-01"
+    assert seen["out"] == str(out)
+    assert main(["fetch-databento", "--start", "2019-05-01", "--out", str(out)]) == 0
+    assert seen["symbol"] == "MES.v.0"
+    with pytest.raises(SystemExit, match="empty"):
+        main(["fetch-databento", "--symbol", "  ", "--start", "2019-05-01"])
+
+
+def test_mnq_named_roll_resets_the_opening_range(tmp_path):
+    from zoneinfo import ZoneInfo
+
+    ct = ZoneInfo("America/Chicago")
+    engine = _engine(tmp_path)
+    morning = datetime(2026, 1, 5, 8, 30, tzinfo=ct)
+    engine.on_minute(_bar(morning, 18000, "MNQH4:1", high=18010, low=17990))
+    engine.on_minute(_bar(morning.replace(hour=8, minute=44), 18005, "MNQH4:1", high=18011, low=17990))
+    engine.on_minute(_bar(morning.replace(hour=8, minute=45), 18005, "MNQH4:1", high=18011, low=17990))
+    assert engine.opening is not None
+    assert engine.opening.high == 18011
+    engine.broker.place_brackets(
+        [
+            BracketLeg(
+                tag="t",
+                side=Side.LONG,
+                qty=1,
+                entry_type="market",
+                entry_price=None,
+                stop_price=17000,
+                target_price=19000,
+                setup="A",
+            )
+        ]
+    )
+    engine.on_minute(_bar(morning.replace(hour=8, minute=46), 18000.5, "MNQH4:1", high=18001, low=17999))
+    assert engine.broker.net_qty() == 1
+    engine.on_minute(_bar(morning.replace(hour=9), 19000, "MNQM4:2", high=19010, low=18990))
+    assert engine.broker.net_qty() == 0
+    assert engine.opening is None
+    rolled = [fill for fill in engine.broker._fills if fill.role == "contract roll"]
+    assert rolled
+    assert rolled[0].price < 18100
+
+
+def test_history_report_opening_range_does_not_span_an_mnq_roll(tmp_path):
+    from topstepbot.historyreport import write_history_report
+
+    path = tmp_path / "mnq_roll.csv"
+    path.write_text(
+        "timestamp,open,high,low,close,volume,contract\n"
+        "2026-01-05T08:30:00-06:00,18000,18010,18000,18005,10,MNQH4:1\n"
+        "2026-01-05T08:40:00-06:00,19000,19010,19000,19005,10,MNQM4:2\n"
+        "2026-01-05T08:46:00-06:00,19005,19012,19002,19008,10,MNQM4:2\n",
+        encoding="utf-8",
+    )
+    settings = Path("config/settings.yaml")
+    before = settings.read_text(encoding="utf-8")
+    config = load_config(settings)
+    text = write_history_report(config, path, out=tmp_path / "report.txt", log_dir=tmp_path / "logs")
+    assert settings.read_text(encoding="utf-8") == before
+    assert "40.0 ticks" in text
+    assert "4040" not in text
+    assert "front month" in text
+    assert "MNQM4:2" in text
+    assert "not back-adjusted" in text
+
+
 def test_source_does_not_print_the_key_or_place_orders():
     text = Path("topstepbot/databentofetch.py").read_text(encoding="utf-8")
     assert "print(api_key" not in text

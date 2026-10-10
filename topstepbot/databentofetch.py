@@ -1,15 +1,16 @@
-"""Download long MES 1-minute history from Databento.
+"""Download long 1-minute history from Databento.
 
-The symbol is ``MES.v.0``: continuous front month, ranked by the previous
-day's volume (Databento roll rule ``v``, rank 0). ``MES.c.0`` is the calendar
-rule and can stay on a quiet expiry after volume has moved, so it is not used.
-``MES.n.0`` would rank by open interest.
+The default symbol is ``MES.v.0``. ``--symbol MNQ.v.0`` is the same request
+for Micro Nasdaq. The ``v`` rule is the continuous front month, ranked by the
+previous day's volume (Databento roll rule ``v``, rank 0). ``MES.c.0`` is the
+calendar rule and can stay on a quiet expiry after volume has moved, so it is
+not used. ``MES.n.0`` would rank by open interest.
 
 Dataset ``GLBX.MDP3``, schema ``ohlcv-1m``, ``stype_in=continuous``. A
 continuous symbol can only be resolved to ``instrument_id``. The outright
-symbol (``MESU4``) comes from a free ``symbology.resolve`` of those ids.
-Instrument ids are only unique within a day, so the CSV contract column is
-``MESU4:instrument_id``.
+symbol (``MESU4``, or ``MNQH4`` for an MNQ download) comes from a free
+``symbology.resolve`` of those ids. Instrument ids are only unique within a
+day, so the CSV contract column is ``MESU4:instrument_id`` or ``MNQH4:instrument_id``.
 
 Prices are the original outright prints. Databento does not back-adjust.
 A roll is a real price gap. ``history-report`` starts indicators and the
@@ -39,7 +40,7 @@ DATASET = "GLBX.MDP3"
 SCHEMA = "ohlcv-1m"
 SYMBOL = "MES.v.0"
 STYPE_IN = "continuous"
-# Databento fixed-point prices use 1e-9. A real MES print is far below this.
+# Databento fixed-point prices use 1e-9. A real MES or MNQ print is far below this.
 _FIXED_POINT = 1_000_000_000
 _PRICE_CEILING = 100_000.0
 DEFAULT_MAX_COST = 20.0
@@ -64,6 +65,9 @@ def fetch_databento(
     """
     if max_cost < 0:
         raise SystemExit("max-cost cannot be negative. Nothing was downloaded.")
+    symbol = str(symbol).strip()
+    if not symbol:
+        raise SystemExit("The symbol is empty. Nothing was downloaded.")
     if client is None:
         client = _client_from_env()
     secrets = _secrets(client)

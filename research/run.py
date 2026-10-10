@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from research.calendar import TRAIN_END, VAL_END, split_days
+from research.costs import active_instrument, using_instrument
 from research.combine import combine_rows, session_rows, summarize_attempts
 from research.market import load_days
 from research.profile import build_profile
@@ -98,13 +99,13 @@ def _cumsum(series) -> list[float]:
     return out
 
 
-def random_null(train_days, val_days) -> dict:
+def random_null(train_days, val_days, instrument=None) -> dict:
     train_exp = []
     val_exp = []
     for seed in range(1000, 1100):
         spec = make_random(seed)
-        train_exp.append(summarize(run_days(train_days, spec))["expectancy"])
-        val_exp.append(summarize(run_days(val_days, spec))["expectancy"])
+        train_exp.append(summarize(run_days(train_days, spec, instrument=instrument))["expectancy"])
+        val_exp.append(summarize(run_days(val_days, spec, instrument=instrument))["expectancy"])
         if seed % 20 == 0:
             print(f"null seed {seed}", flush=True)
     return {"train": train_exp, "val": val_exp}
@@ -131,12 +132,23 @@ def _attempt_block(trades, sessions, censor):
 
 
 def main(argv=None) -> None:
-    parser = argparse.ArgumentParser(description="Predeclared MES research study")
+    parser = argparse.ArgumentParser(description="Predeclared research study")
     parser.add_argument("--early", required=True)
     parser.add_argument("--late", required=True)
     parser.add_argument("--out", default="docs/RESEARCH.md")
+    parser.add_argument(
+        "--instrument",
+        default="MES",
+        choices=("MES", "MNQ"),
+        help="MES is $5/point and $1.25/tick. MNQ is $2/point and $0.50/tick. Both use the published $1.22 round turn. Default MES.",
+    )
     args = parser.parse_args(argv)
+    with using_instrument(args.instrument):
+        _study(args)
 
+
+def _study(args) -> None:
+    instrument = active_instrument()
     out = Path(args.out)
     research_dir = out.parent / "research"
     research_dir.mkdir(parents=True, exist_ok=True)
@@ -159,8 +171,8 @@ def main(argv=None) -> None:
     loop = time.time()
     for index, spec in enumerate(specs, start=1):
         print(f"[{index}/{len(specs)}] {spec.name}", flush=True)
-        train_trades[spec.name] = run_days(train, spec)
-        val_trades[spec.name] = run_days(validation, spec)
+        train_trades[spec.name] = run_days(train, spec, instrument=instrument)
+        val_trades[spec.name] = run_days(validation, spec, instrument=instrument)
     print(f"train/val done in {time.time() - loop:.1f}s", flush=True)
 
     train_stats = {name: summarize(trades) for name, trades in train_trades.items()}
@@ -181,13 +193,13 @@ def main(argv=None) -> None:
     if finalists:
         print("HOLDOUT START", flush=True)
         for spec in finalists:
-            trades = run_days(holdout, spec)
+            trades = run_days(holdout, spec, instrument=instrument)
             hold_trades[spec.name] = trades
             hold_stats[spec.name] = summarize(trades)
             hold_daily[spec.name] = daily_vector(trades, hold_sessions)
 
     print("random null", flush=True)
-    null_raw = random_null(train, validation)
+    null_raw = random_null(train, validation, instrument=instrument)
     null = {"train": _dist(null_raw["train"]), "val": _dist(null_raw["val"])}
     val_null = np.asarray(null_raw["val"], dtype=float)
 
@@ -312,6 +324,7 @@ def main(argv=None) -> None:
 
     charts = write_charts(profile, equity, combine_chart, research_dir)
     ctx = {
+        "instrument": instrument.code,
         "load": summary,
         "splits": {"train": _span(train), "validation": _span(validation), "holdout": _span(holdout)},
         "profile": profile,
@@ -338,6 +351,7 @@ def main(argv=None) -> None:
     text = render(ctx)
     out.write_text(text)
     payload = {
+        "instrument": instrument.code,
         "load": summary,
         "splits": ctx["splits"],
         "n_eligible": n_tests,

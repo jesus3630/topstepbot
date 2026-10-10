@@ -225,6 +225,20 @@ def test_contract_expiry_and_front_month_stitch():
     assert "Roll" in note
     assert "not back-adjusted" in note
     assert parse_contract_expiry("MESU4:42001234", 2026) == datetime(2024, 9, 15).date()
+    assert parse_contract_expiry("MNQH4:7", 2024) == datetime(2024, 3, 15).date()
+    assert parse_contract_expiry("MNQM4", 2024) == datetime(2024, 6, 15).date()
+    assert parse_contract_expiry("CON.F.US.MNQ.Z26", 2026) == datetime(2026, 12, 15).date()
+    mnq_bars, mnq_note = stitch_front_month(
+        [
+            labeled(august, 10, "MNQU6"),
+            labeled(august, 20, "MNQZ6"),
+            labeled(october, 30, "MNQU6"),
+            labeled(october, 40, "MNQZ6"),
+        ]
+    )
+    assert [bar.close for bar in mnq_bars] == [10, 40]
+    assert [bar.contract for bar in mnq_bars] == ["MNQU6", "MNQZ6"]
+    assert "front month" in mnq_note
 
 
 def test_history_report_states_combine_stats_without_editing_settings(tmp_path):

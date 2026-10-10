@@ -11,7 +11,15 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from research.costs import DAILY_STOP, MAX_TRADES_PER_DAY, TICK, contracts_for_stop, round_tick
+from research.costs import (
+    DAILY_STOP,
+    MAX_TRADES_PER_DAY,
+    active_instrument,
+    contracts_for_stop,
+    resolve_instrument,
+    round_tick,
+    using_instrument,
+)
 from research.market import Day
 from research.simulate import simulate
 from research.stats import Trade, corr, train_ok, val_ok
@@ -167,16 +175,26 @@ def eligible_count(specs: list[Spec] | None = None) -> int:
     return sum(1 for spec in specs if spec.eligible)
 
 
-def grid_text() -> str:
+def grid_text(instrument=None) -> str:
+    inst = active_instrument() if instrument is None else resolve_instrument(instrument)
+    tick_dollars = inst.tick * inst.point_value
+    costs = (
+        f"Costs: TopstepX {inst.code} round turn is ${inst.fee_round_turn:.2f} ({inst.fee_note}). "
+        f"Market and stop orders pay 1 tick (${tick_dollars:.2f}) of adverse slippage per side. "
+        "Limit orders pay none, and only if price trades through the limit. "
+        "A market entry sized off a stop therefore includes 2 ticks plus the fee. "
+        "A limit entry includes 1 tick (the stop or the flatten) plus the fee. "
+        "The live bot's $1.40 placeholder is not changed."
+    )
     specs = all_specs()
     lines = [
-        "Predeclared MES research grid. Written from research/strategies.py before any backtest result is used.",
+        f"Predeclared {inst.code} research grid. Written from research/strategies.py before any backtest result is used.",
         "",
         "Splits: train is 2019-05-05 through 2023-12-31. Validation is 2024-01-01 through 2025-06-30. Holdout is 2025-07-01 through the end of the file. The holdout is scored only for rules that already qualified on train and validation, and it is not used to pick a replacement.",
         "",
-        "Costs: TopstepX MES round turn is $1.22 (commission $0.50 + exchange $0.70 + NFA $0.02). Market and stop orders pay 1 tick ($1.25) of adverse slippage per side. Limit orders pay none, and only if price trades through the limit. A market entry sized off a stop therefore includes 2 ticks plus the fee. A limit entry includes 1 tick (the stop or the flatten) plus the fee. The live bot's $1.40 placeholder is not changed.",
+        costs,
         "",
-        "Risk used only in this study: $200 per trade, at most 50 MES, at most 2 trades a day, no new trade after the day's closed P&L or worst mark is -$400 or worse, flat by 15:10 CT, one position at a time, cash session only. Overnight drift is described and not traded.",
+        f"Risk used only in this study: $200 per trade, at most 50 {inst.code}, at most 2 trades a day, no new trade after the day's closed P&L or worst mark is -$400 or worse, flat by 15:10 CT, one position at a time, cash session only. Overnight drift is described and not traded.",
         "",
         "Selection, fixed before the run: train needs at least 100 trades, positive expectancy, and positive net. Validation needs at least 40 trades, positive expectancy, positive net, a win rate within 15 percentage points of train, and expectancy at least 25% of train. A neighbor is the same family with exactly one parameter changed to the next value on that parameter's list. If more than half of the existing neighbors have validation expectancy at or below zero, the rule is dropped. Remaining rules are ranked by validation expectancy times the square root of validation trades. Keep up to 3 with pairwise validation daily correlation under 0.5. Benchmarks cannot be finalists.",
         "",
@@ -200,7 +218,7 @@ def _atr(day: Day, index: int) -> float | None:
     if index < 0 or index >= len(day.atr):
         return None
     value = float(day.atr[index])
-    if value != value or value < TICK:
+    if value != value or value < _tick():
         return None
     return value
 
@@ -272,10 +290,25 @@ def _bracket_ok(side: str, ref: float, stop: float, target: float | None) -> boo
     return True
 
 
+def _tick() -> float:
+    return active_instrument().tick
+
+
+def _round(price: float) -> float:
+    return round_tick(price, _tick())
+
+
 def _qty(distance: float, slip_ticks: int) -> int:
-    if distance <= TICK:
+    inst = active_instrument()
+    if distance <= inst.tick:
         return 0
-    return contracts_for_stop(distance, slip_ticks_round_turn=slip_ticks)
+    return contracts_for_stop(
+        distance,
+        fee=inst.fee_round_turn,
+        tick=inst.tick,
+        point_value=inst.point_value,
+        slip_ticks_round_turn=slip_ticks,
+    )
 
 
 def _try_market(
@@ -299,9 +332,9 @@ def _try_market(
         return None
     ref = float(day.o[entry_i])
     if stop is not None:
-        stop = round_tick(float(stop))
+        stop = _round(float(stop))
     if target is not None:
-        target = round_tick(float(target))
+        target = _round(float(target))
     if qty is None:
         if stop is None or not _bracket_ok(side, ref, stop, target):
             return None
@@ -333,9 +366,9 @@ def _try_limit(day: Day, side: str, entry_i: int, level: float, stop: float, tar
         return None
     if exit_on == "open" and entry_i >= last_i:
         return None
-    level = round_tick(float(level))
-    stop = round_tick(float(stop))
-    target = round_tick(float(target))
+    level = _round(float(level))
+    stop = _round(float(stop))
+    target = _round(float(target))
     if not _bracket_ok(side, level, stop, target):
         return None
     distance = (level - stop) if side == "long" else (stop - level)
@@ -372,6 +405,7 @@ def execute(day: Day, intents: list[dict], name: str) -> list[Trade]:
             break
         if int(intent["qty"]) < 1:
             continue
+        inst = active_instrument()
         result = simulate(
             day.o,
             day.h,
@@ -386,6 +420,9 @@ def execute(day: Day, intents: list[dict], name: str) -> list[Trade]:
             last_index=intent["last_index"],
             exit_on=intent["exit_on"],
             qty=intent["qty"],
+            fee_rt=inst.fee_round_turn,
+            tick=inst.tick,
+            point_value=inst.point_value,
         )
         if not result.filled:
             continue
@@ -409,14 +446,20 @@ def execute(day: Day, intents: list[dict], name: str) -> list[Trade]:
     return trades
 
 
-def run_days(days: list[Day], spec: Spec) -> list[Trade]:
-    runner = RUNNERS[spec.family]
-    trades: list[Trade] = []
-    for day in days:
-        intents = runner(day, spec)
-        if intents:
-            trades.extend(execute(day, intents, spec.name))
-    return trades
+def run_days(days: list[Day], spec: Spec, instrument=None) -> list[Trade]:
+    """Replay `spec`. `instrument` is an Instrument or a code such as ``MNQ``.
+
+    Omitted means the active instrument, which is MES unless a caller set one.
+    """
+    chosen = active_instrument() if instrument is None else resolve_instrument(instrument)
+    with using_instrument(chosen):
+        runner = RUNNERS[spec.family]
+        trades: list[Trade] = []
+        for day in days:
+            intents = runner(day, spec)
+            if intents:
+                trades.extend(execute(day, intents, spec.name))
+        return trades
 
 
 def run_orb(day: Day, spec: Spec) -> list[dict]:
@@ -527,7 +570,7 @@ def run_vwap_mr(day: Day, spec: Spec) -> list[dict]:
         if close > upper + 1e-9 or close < lower - 1e-9:
             continue
         side = armed
-        stop = extreme + TICK if side == "short" else extreme - TICK
+        stop = extreme + _tick() if side == "short" else extreme - _tick()
         entry_i = end_i + 1
         last_i, exit_on = deadline(day, win_end)
         intent = _try_market(day, side, entry_i, stop, vwap, last_i, exit_on)
@@ -594,10 +637,10 @@ def run_prior(day: Day, spec: Spec) -> list[dict]:
                 continue
             if swept_high and inside:
                 side = "short"
-                stop = float(highs[i]) + TICK
+                stop = float(highs[i]) + _tick()
             elif swept_low and inside:
                 side = "long"
-                stop = float(lows[i]) - TICK
+                stop = float(lows[i]) - _tick()
             else:
                 continue
             target = float(day.pdc)
@@ -612,16 +655,16 @@ def run_prior(day: Day, spec: Spec) -> list[dict]:
             ref = float(day.o[entry_i])
             mid = (float(day.pdh) + float(day.pdl)) / 2.0
             if side == "long":
-                if float(day.pdc) < ref - TICK:
+                if float(day.pdc) < ref - _tick():
                     stop = float(day.pdc)
-                elif mid < ref - TICK:
+                elif mid < ref - _tick():
                     stop = mid
                 else:
                     return []
             else:
-                if float(day.pdc) > ref + TICK:
+                if float(day.pdc) > ref + _tick():
                     stop = float(day.pdc)
-                elif mid > ref + TICK:
+                elif mid > ref + _tick():
                     stop = mid
                 else:
                     return []
@@ -653,10 +696,10 @@ def run_overnight(day: Day, spec: Spec) -> list[dict]:
         ref = float(day.o[entry_i])
         if swept_high:
             side = "short"
-            stop = float(highs[i]) + TICK
+            stop = float(highs[i]) + _tick()
         else:
             side = "long"
-            stop = float(lows[i]) - TICK
+            stop = float(lows[i]) - _tick()
         if spec.get("target") == "mid":
             target = mid
         else:
