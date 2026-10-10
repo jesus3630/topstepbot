@@ -195,6 +195,10 @@ python -m topstepbot history-report --csv data/mes_1m_databento.csv
 
 When the contract column changes, the replay closes any open paper position at the old contract's last price and starts the EMA, ATR, VWAP, swings, and the opening range over. Prior-day levels from the old outright are not carried onto the new price. Equity and the trailing max-loss floor are not reset. Live bars leave the contract blank, so this does not change the live bot. `config/settings.yaml` is not changed.
 
+## Research note
+
+[docs/RESEARCH.md](docs/RESEARCH.md) is a separate study of when MES moves and whether any simple predeclared day-trade survived 2019–2023, then 2024 through mid-2025, then a holdout. It does not change the live strategy. Charts and the grid are under `docs/research/`. Re-running it needs the long CSV plus `requirements-research.txt` (numpy and matplotlib). The command is `python -m research.run`.
+
 A pip dry-run for CPython 3.14 on macOS (Apple silicon and Intel) installs `databento` 0.87.0 with `databento-dbn` 0.70.0, pandas, numpy, and pyarrow (checked 2026-10-09). Python 3.14 support in the client started at 0.68.0. This command only reads history. It cannot place an order.
 
 ## Run in paper mode
@@ -365,6 +369,8 @@ If a bracket is rejected because the account is in Position Brackets mode, the d
 | `topstepbot/historyfetch.py` | Resume-safe MES history download. Cannot place orders |
 | `topstepbot/databentofetch.py` | Databento MES history (`MES.v.0`). Cost check before download |
 | `topstepbot/historyreport.py` | Strategy report on a real CSV. Does not change settings |
+| `research/` | Offline study of MES times and predeclared rules. Does not place orders |
+| `docs/RESEARCH.md` | Plain-English result of that study |
 | `data/sample_mes_1m_synthetic.csv` | Fake bars so the backtest runs immediately |
 | `data/mes_1m_real.csv` | Created on the Mac by `fetch-history`. Gitignored |
 | `data/mes_1m_databento.csv` | Created on the Mac by `fetch-databento`. Gitignored |
