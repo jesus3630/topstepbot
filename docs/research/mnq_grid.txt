@@ -1,0 +1,84 @@
+Predeclared MNQ research grid. Written from research/strategies.py before any backtest result is used.
+
+Splits: train is 2019-05-05 through 2023-12-31. Validation is 2024-01-01 through 2025-06-30. Holdout is 2025-07-01 through the end of the file. The holdout is scored only for rules that already qualified on train and validation, and it is not used to pick a replacement.
+
+Costs: TopstepX MNQ round turn is $1.22 (published round-turn total on the same page, listed next to MES). Market and stop orders pay 1 tick ($0.50) of adverse slippage per side. Limit orders pay none, and only if price trades through the limit. A market entry sized off a stop therefore includes 2 ticks plus the fee. A limit entry includes 1 tick (the stop or the flatten) plus the fee. The live bot's $1.40 placeholder is not changed.
+
+Risk used only in this study: $200 per trade, at most 50 MNQ, at most 2 trades a day, no new trade after the day's closed P&L or worst mark is -$400 or worse, flat by 15:10 CT, one position at a time, cash session only. Overnight drift is described and not traded.
+
+Selection, fixed before the run: train needs at least 100 trades, positive expectancy, and positive net. Validation needs at least 40 trades, positive expectancy, positive net, a win rate within 15 percentage points of train, and expectancy at least 25% of train. A neighbor is the same family with exactly one parameter changed to the next value on that parameter's list. If more than half of the existing neighbors have validation expectancy at or below zero, the rule is dropped. Remaining rules are ranked by validation expectancy times the square root of validation trades. Keep up to 3 with pairwise validation daily correlation under 0.5. Benchmarks cannot be finalists.
+
+Multiple testing: N is the number of eligible configurations, not the benchmarks and not the 100 random seeds. Adjusted p = min(1, raw bootstrap p × N). The bootstrap resamples validation daily P&L 2000 times with seed 12345. A sign-flip check uses the same seed on its own generator. The random null uses seeds 1000 through 1099, train and validation only, and is not a menu to pick from. A finalist with adjusted bootstrap p above 0.10 is not a trading recommendation.
+
+Combine, scored separately inside each split so later years do not leak backward: start $50,000, pass at +$3,000 if the best day is under half of profits, fail on a $1,000 intraday daily loss or an end-of-day trailing $2,000 max loss. The floor is min($50,000, high-water mark − $2,000) and only moves up. Attempts start on the first session of each month. Unfinished attempts count as not passed. The 40% consistency figure is the later payout path, not the Combine pass test.
+
+Eligible configurations: 63. Total including 3 benchmarks: 66.
+
+| name | family | parameters | eligible |
+|---|---|---|---|
+| orb_5_opposite_1R | orb | or_minutes=5, stop=opposite, target=1R | True |
+| orb_5_opposite_2R | orb | or_minutes=5, stop=opposite, target=2R | True |
+| orb_5_opposite_time | orb | or_minutes=5, stop=opposite, target=time | True |
+| orb_5_mid_1R | orb | or_minutes=5, stop=mid, target=1R | True |
+| orb_5_mid_2R | orb | or_minutes=5, stop=mid, target=2R | True |
+| orb_5_mid_time | orb | or_minutes=5, stop=mid, target=time | True |
+| orb_5_atr_1R | orb | or_minutes=5, stop=atr, target=1R | True |
+| orb_5_atr_2R | orb | or_minutes=5, stop=atr, target=2R | True |
+| orb_5_atr_time | orb | or_minutes=5, stop=atr, target=time | True |
+| orb_15_opposite_1R | orb | or_minutes=15, stop=opposite, target=1R | True |
+| orb_15_opposite_2R | orb | or_minutes=15, stop=opposite, target=2R | True |
+| orb_15_opposite_time | orb | or_minutes=15, stop=opposite, target=time | True |
+| orb_15_mid_1R | orb | or_minutes=15, stop=mid, target=1R | True |
+| orb_15_mid_2R | orb | or_minutes=15, stop=mid, target=2R | True |
+| orb_15_mid_time | orb | or_minutes=15, stop=mid, target=time | True |
+| orb_15_atr_1R | orb | or_minutes=15, stop=atr, target=1R | True |
+| orb_15_atr_2R | orb | or_minutes=15, stop=atr, target=2R | True |
+| orb_15_atr_time | orb | or_minutes=15, stop=atr, target=time | True |
+| orb_30_opposite_1R | orb | or_minutes=30, stop=opposite, target=1R | True |
+| orb_30_opposite_2R | orb | or_minutes=30, stop=opposite, target=2R | True |
+| orb_30_opposite_time | orb | or_minutes=30, stop=opposite, target=time | True |
+| orb_30_mid_1R | orb | or_minutes=30, stop=mid, target=1R | True |
+| orb_30_mid_2R | orb | or_minutes=30, stop=mid, target=2R | True |
+| orb_30_mid_time | orb | or_minutes=30, stop=mid, target=time | True |
+| orb_30_atr_1R | orb | or_minutes=30, stop=atr, target=1R | True |
+| orb_30_atr_2R | orb | or_minutes=30, stop=atr, target=2R | True |
+| orb_30_atr_time | orb | or_minutes=30, stop=atr, target=time | True |
+| gap_fade_10bp | gap | mode=fade, threshold=0.001 | True |
+| gap_fade_25bp | gap | mode=fade, threshold=0.0025 | True |
+| gap_go_10bp | gap | mode=go, threshold=0.001 | True |
+| gap_go_25bp | gap | mode=go, threshold=0.0025 | True |
+| vwap_mr_0830_1030_1 | vwap_mr | window=(510, 630), band=1.0 | True |
+| vwap_mr_0830_1030_1.5 | vwap_mr | window=(510, 630), band=1.5 | True |
+| vwap_mr_1030_1200_1 | vwap_mr | window=(630, 720), band=1.0 | True |
+| vwap_mr_1030_1200_1.5 | vwap_mr | window=(630, 720), band=1.5 | True |
+| vwap_mr_1200_1400_1 | vwap_mr | window=(720, 840), band=1.0 | True |
+| vwap_mr_1200_1400_1.5 | vwap_mr | window=(720, 840), band=1.5 | True |
+| vwap_pb_0845_1100_1.5R | vwap_pb | window=(525, 660), multiple=1.5 | True |
+| vwap_pb_0845_1100_2R | vwap_pb | window=(525, 660), multiple=2.0 | True |
+| vwap_pb_0930_1200_1.5R | vwap_pb | window=(570, 720), multiple=1.5 | True |
+| vwap_pb_0930_1200_2R | vwap_pb | window=(570, 720), multiple=2.0 | True |
+| pd_fade | prior | variant=fade | True |
+| pd_break_1R | prior | variant=break_1R | True |
+| pd_break_2R | prior | variant=break_2R | True |
+| on_reclaim_mid | overnight | target=mid | True |
+| on_reclaim_1.5R | overnight | target=1.5R | True |
+| fh_15bp_1.5R | first_hour | threshold=0.0015, exit=1.5R | True |
+| fh_15bp_time | first_hour | threshold=0.0015, exit=time | True |
+| fh_25bp_1.5R | first_hour | threshold=0.0025, exit=1.5R | True |
+| fh_25bp_time | first_hour | threshold=0.0025, exit=time | True |
+| late_1R | late | exit=1R | True |
+| late_time | late | exit=time | True |
+| tod_0830_0930_long | tod | window=(510, 570), side=long | True |
+| tod_0830_0930_short | tod | window=(510, 570), side=short | True |
+| tod_0930_1030_long | tod | window=(570, 630), side=long | True |
+| tod_0930_1030_short | tod | window=(570, 630), side=short | True |
+| tod_1000_1130_long | tod | window=(600, 690), side=long | True |
+| tod_1000_1130_short | tod | window=(600, 690), side=short | True |
+| tod_1330_1500_long | tod | window=(810, 900), side=long | True |
+| tod_1330_1500_short | tod | window=(810, 900), side=short | True |
+| tod_1400_1500_long | tod | window=(840, 900), side=long | True |
+| tod_1400_1500_short | tod | window=(840, 900), side=short | True |
+| trend_vwap_ema | trend | rule=vwap_ema_20 | True |
+| bench_bh | bench | kind=bh | False |
+| bench_bh_stop | bench | kind=bh_stop | False |
+| bench_random | bench | kind=random, seed=7 | False |

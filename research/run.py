@@ -376,10 +376,12 @@ def _study(args) -> None:
     (research_dir / "results.json").write_text(json.dumps(_jsonable(payload), indent=2))
     artifacts = Path("/opt/cursor/artifacts")
     artifacts.mkdir(parents=True, exist_ok=True)
-    shutil.copy(out, artifacts / "RESEARCH.md")
+    # A non-MES run must not replace the MES note or its charts.
+    prefix = "" if instrument.code == "MES" else f"{instrument.code.lower()}_"
+    shutil.copy(out, artifacts / f"{prefix}RESEARCH.md")
     for key, path in charts.items():
         if path is not None:
-            shutil.copy(path, artifacts / path.name)
+            shutil.copy(path, artifacts / f"{prefix}{path.name}")
     print(f"wrote {out} in {time.time() - started:.1f}s", flush=True)
 
 

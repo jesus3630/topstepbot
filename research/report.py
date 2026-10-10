@@ -344,8 +344,9 @@ def _lead(ctx: dict) -> str:
         train = ctx["train_stats"][name]
         raw = ctx["pvalues"][name]["bootstrap"]
         adjusted = ctx["pvalues"][name]["bootstrap_adjusted"]
+        kind = "the only rule" if len(finalists) == 1 else "a rule"
         bits.append(
-            f"`{name}` is the only rule that cleared the accounting gates. "
+            f"`{name}` is {kind} that cleared the accounting gates. "
             f"It made {_money(train['expectancy'])} per trade in train ({train['trades']} trades, net {_money(train['net'])}), "
             f"{_money(val['expectancy'])} in validation ({val['trades']} trades, net {_money(val['net'])}), and "
             f"{_money(hold['expectancy'])} on the one holdout pass ({hold['trades']} trades, net {_money(hold['net'])}, win rate {_pct(hold['win_rate'])}). "
@@ -356,8 +357,7 @@ def _lead(ctx: dict) -> str:
             "Do not trade it, and do not change the live bot. "
             + " ".join(bits)
             + f" The cutoff written down before the run was an adjusted p-value of {P_VALUE_CUTOFF:.2f}. "
-            "A positive dollar total that does not clear that bar is not an edge. "
-            "The train result is about one dollar a trade, which is smaller than one tick, and the later windows are a jump rather than the same result repeating."
+            "A positive dollar total that does not clear that bar is not an edge."
         )
     return " ".join(bits)
 

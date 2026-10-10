@@ -2,13 +2,13 @@
 
 Do not trade it, and do not change the live bot. `fh_15bp_1.5R` is the only rule that cleared the accounting gates. It made $1.07 per trade in train (715 trades, net $765.06), $12.95 in validation (171 trades, net $2,213.66), and $16.93 on the one holdout pass (135 trades, net $2,285.07, win rate 54.1%). The validation bootstrap p-value is 0.151 before the penalty and 1.000 after multiplying by the 63 tests. The cutoff written down before the run was an adjusted p-value of 0.10. A positive dollar total that does not clear that bar is not an edge. The train result is about one dollar a trade, which is smaller than one tick, and the later windows are a jump rather than the same result repeating.
 
-This is a research note, not a recommendation to place a live order and not financial advice. The live bot's settings were not changed.
+This is a research note, not a recommendation to place a live order and not financial advice. The live bot's settings were not changed. The MNQ rerun of this same menu, the ES/NQ comparison, and the event-day tags are later in this note. They were not used to rewrite the MES result above.
 
 ## Costs, hours, and the Combine
 
 TopstepX lists the Micro E-mini S&P 500 round turn at **$1.22** ($0.50 commission, $0.70 exchange, $0.02 NFA), read from https://help.topstep.com/en/articles/8284213-topstepx-commissions-and-fees on 2026-10-10. The October 2026 CME increase on that page is MCL and MNG, not MES. A market or stop order also pays 1 tick against the trader on the way in and, if it exits by stop or by a flatten, 1 tick on the way out. That is **$3.72** all-in for a market round turn on one MES. A limit that is filled only when price trades through it pays no entry slippage. The live config still says $1.40. This study does not edit that file.
 
-The account rules used here are the 50K Combine: $3,000 profit target, $1,000 daily loss limit, $2,000 end-of-day trailing max loss, at most 50 MES, and flat by 3:10 PM CT. Passing also requires the best day to be under half of the profits. The later payout path uses 40% instead of 50%; that stricter test is reported beside the Combine result, and it is not what decides a pass. Size in this study risks $200 a trade, skips the trade if one contract cannot fit, takes at most two trades a day, and stops opening new trades once the day is down $400. MNQ and M2K were not tested. There is no second data file, and adding one would not have been a small side check.
+The account rules used here are the 50K Combine: $3,000 profit target, $1,000 daily loss limit, $2,000 end-of-day trailing max loss, at most 50 MES, and flat by 3:10 PM CT. Passing also requires the best day to be under half of the profits. The later payout path uses 40% instead of 50%; that stricter test is reported beside the Combine result, and it is not what decides a pass. Size in this study risks $200 a trade, skips the trade if one contract cannot fit, takes at most two trades a day, and stops opening new trades once the day is down $400. MNQ was scored later, on its own file, with the same rule list and MNQ's own dollars. M2K was not tested.
 
 ## The rules were written down first
 
@@ -337,9 +337,200 @@ Those 100 seeds are only two books. Adding an even number or an odd number to th
 
 ## Recommendation for the live bot
 
-Do not change the live bot. Do not switch the morning to first-hour momentum, and do not loosen the chop filter or the 2-tick retest to force more trades. `fh_15bp_1.5R` does not clear the predeclared adjusted p-value cutoff of 0.10. Counting all 63 tests, the result is indistinguishable from luck, even though the holdout dollars happened to stay positive. The earlier seven-year replay of the live opening-range retest was already about 102 trades, a 38% win rate, and a loss of roughly $7 a trade. This broader search does not rescue it and does not offer a substitute. Leave the live settings where they are. A new Combine attempt is not justified by this file.
+Do not change the live bot. Do not switch the morning to first-hour momentum, and do not loosen the chop filter or the 2-tick retest to force more trades. `fh_15bp_1.5R` does not clear the predeclared adjusted p-value cutoff of 0.10. Counting all 63 tests, the result is indistinguishable from luck, even though the holdout dollars happened to stay positive. The earlier seven-year replay of the live opening-range retest was already about 102 trades, a 38% win rate, and a loss of roughly $7 a trade. This broader search does not rescue it and does not offer a substitute. Leave the live settings where they are. A new Combine attempt is not justified by this file. The MNQ, correlation, and event-day results below do not change that.
+
+## MNQ, same menu, second look
+
+The file is Databento `MNQ.v.0`, 2,611,921 one-minute bars, 1,912 cash sessions, 30 rolls, 31 contracts, 2019-05-06 through 2026-09-30. The splits are the same dates as MES: train 1,203 sessions (through 2023-12-29), validation 385 (2024-01-02 through 2025-06-30), holdout 324 (2025-07-01 through 2026-09-30). TopstepX lists the Micro E-mini Nasdaq-100 round turn at **$1.22**, the same published total as MES, read on 2026-10-10 from the commissions page. That page does not print a separate commission, exchange, and NFA split for MNQ, so this note does not invent one. A market or stop round turn is $2.22 all-in (the fee plus two $0.50 ticks). One MNQ point is $2. The live config still says $1.40 and still trades MES.
+
+The 63 rules were written for the MES study and locked before those MES results were scored. They were not designed from MNQ data. Reusing the menu on MNQ happened after the MES study was finished. The MNQ holdout was not used to pick the menu or the MNQ finalists. This is a second look at a menu that already existed. Multiplying MNQ's p-values by 63 does not undo the earlier look at MES.
+
+Twelve configurations cleared the train gate, the validation gate, and the neighbor gate. Every one of them is an opening-range rule or a first-hour rule. The rank kept three whose validation days were not too alike. No combined book of those three was formed. The other nine, including the other first-hour settings and `orb_15_opposite_1R`, were not held out. Every row is in `docs/research/mnq_results.json`.
+
+| rule | split | trades | win rate | $/trade | net | avg qty | max drawdown |
+|---|---|---:|---:|---:|---:|---:|---:|
+| fh_15bp_1.5R | train | 499 | 48.5% | $7.98 | $3,981.08 | 1.42 | $2,073.98 |
+| fh_15bp_1.5R | validation | 87 | 55.2% | $38.81 | $3,376.60 | 1.09 | $830.82 |
+| fh_15bp_1.5R | holdout | 39 | 51.3% | $32.06 | $1,250.42 | 1.00 | $612.04 |
+| orb_15_opposite_2R | train | 853 | 50.1% | $6.22 | $5,305.56 | 1.64 | $1,970.68 |
+| orb_15_opposite_2R | validation | 218 | 50.0% | $16.98 | $3,700.62 | 1.17 | $1,043.50 |
+| orb_15_opposite_2R | holdout | 85 | 52.9% | $10.38 | $882.26 | 1.08 | $577.54 |
+| orb_30_opposite_1R | train | 653 | 53.3% | $5.62 | $3,666.60 | 1.52 | $1,160.90 |
+| orb_30_opposite_1R | validation | 134 | 53.7% | $7.58 | $1,015.84 | 1.14 | $884.82 |
+| orb_30_opposite_1R | holdout | 45 | 60.0% | $31.62 | $1,422.88 | 1.02 | $491.26 |
+
+| rule | bootstrap p | adjusted bootstrap p | sign-flip p | adjusted sign-flip p |
+|---|---:|---:|---:|---:|
+| fh_15bp_1.5R | 0.0195 | 1.000 | 0.0155 | 0.976 |
+| orb_15_opposite_2R | 0.0470 | 1.000 | 0.0565 | 1.000 |
+| orb_30_opposite_1R | 0.221 | 1.000 | 0.208 | 1.000 |
+
+The cutoff written down before any of this was an adjusted p-value of 0.10. All three are above it. `fh_15bp_1.5R` has a raw validation bootstrap p-value of 0.0195. Times 63 that is above 1, so the adjusted value is 1.000. A raw p-value that looks small before the penalty is not a finding. The holdout dollars stayed positive on 39, 85, and 45 trades. That is the same direction as validation. It is not significance, and the holdout was not a fresh design. Average size fell to about one contract by the holdout because the stop, in points, no longer fits a second contract inside $200.
+
+The other first-hour settings also cleared the gates and were not held out. `fh_15bp_time` made $8.24 a trade in train (499 trades) and $35.51 in validation (87). `fh_25bp_1.5R` made $7.44 (362) and $11.44 (47). `fh_25bp_time` made $5.86 (362) and $9.73 (47). They are the same idea with a higher threshold or a time exit.
+
+`orb_15_opposite_1R` also cleared the gates: train 853 trades, 52.2%, $2.96 a trade; validation 218 trades, 55.5%, $15.69. It lost the rank to the 2R version of the same entry, so the 63-rule screen did not open its holdout. It is the opening-range baseline in the event section below because that baseline was named before these MNQ ranks existed. The live bot is still a 2-tick retest, not any of these research opening-range rules.
+
+The predeclared null still uses an 8-point stop and an 8-point target. On MNQ the median half hour is 45.25 points and the 8:30 half hour's median range is 92.5 points, so an 8-point stop is noise. Train null expectancy averaged −$44.71 and validation averaged −$52.20. All 100 seeds were negative in both windows. Beating that null is almost free. The bootstrap is the test that counts. Those 100 seeds are still only two books, even and odd, the same way they were on MES.
+
+The cash session gained 3.31 points a day on average, about $7 on one MNQ. The widest half hour is 8:30 (median range 92.5 points). The quietest is 12:30 (40.75). That is the same shape as MES, at about four times the points. The 8:30 bucket's variance ratio is 0.80, the fade side of 1, and the highest variance ratio in the day is 0.95 at 10:30. The open is wide. It is not a clean trend inside the half hour.
+
+![MNQ median range by half hour](research/mnq_time_of_day.png)
+
+![MNQ finalist equity after costs](research/mnq_equity.png)
+
+## How ES and NQ move together
+
+All 1,912 cash sessions match. Correlation below is Pearson correlation of percent returns, so the different point values do not inflate it. Daily return is the 8:30 open to the last cash bar before 15:10. One-minute returns are close to close of exact consecutive minutes. A gap is not bridged.
+
+| horizon | correlation | notes |
+|---|---:|---|
+| Daily cash session | 0.929 | 1,912 days |
+| 30-minute path | 0.923 | from the 8:30 open, then close to close |
+| 5-minute path | 0.924 | same construction |
+| 1-minute | 0.922 | 732,030 aligned minutes |
+
+They move together. On 12.1% of days the cash-session returns have opposite signs. On 16.6% of days the first hours have opposite signs. The other days, the large majority, have the same sign.
+
+The loose part of the day is the open. Correlation of 1-minute returns is 0.856 from 8:31 through 8:59, 0.919 in the 9:00 half hour, and it rises to 0.956 at 13:30. The afternoon is the tight part of the day. The first half hour is where a divergence is least surprising, and even there the correlation is still strongly positive.
+
+| year | days | daily correlation |
+|---|---:|---:|
+| 2019 | 171 | 0.929 |
+| 2020 | 259 | 0.899 |
+| 2021 | 258 | 0.861 |
+| 2022 | 258 | 0.964 |
+| 2023 | 257 | 0.923 |
+| 2024 | 259 | 0.933 |
+| 2025 | 257 | 0.973 |
+| 2026 | 193 | 0.920 |
+
+| prior-close VIX | days | daily correlation |
+|---|---:|---:|
+| under 15 | 397 | 0.893 |
+| 15 to just under 20 | 786 | 0.922 |
+| 20 and above | 729 | 0.937 |
+
+The loosest year in this file is 2021. The rolling 60-session correlation of daily returns has median 0.932, a high of 0.991 on 2025-06-30, and a low of 0.665 on 2021-08-17. Of 1,853 windows, 64 printed below 0.80, and all 64 are in 2021. None printed below 0.50. They also lock together a bit more when the prior VIX close is high, and a bit less when it is under 15. "A bit" is the right size: 0.89 versus 0.94.
+
+![60-session correlation of daily cash returns](research/es_nq_rolling_corr.png)
+
+![1-minute correlation by half hour](research/es_nq_corr_by_time.png)
+
+Lead-lag uses the correlation of the MES return ending at minute t with the MNQ return ending at t+k, for k from −5 to +5. A positive lag is MNQ's later minute. Lag 0 is 0.922. Lag +1 is 0.0135 and lag −1 is 0.0134, on about 730,000 pairs each. The other lags are around zero. One index does not lead the other by a minute. There is no one-minute head start to trade.
+
+![1-minute lead-lag](research/es_nq_lead_lag.png)
+
+One MNQ is the more volatile contract in dollars, because it moves so many more points. The standard deviation of the daily cash-session point change is 39.7 points on MES and 183.7 points on MNQ. One MES point is $5 and one MNQ point is $2, so that is $198 a day on one MES and $367 a day on one MNQ. MNQ moves about 4.6 times as many points and about 1.85 times as many dollars.
+
+The ratio is the MNQ close divided by the MES close, which is the same number as NQ/ES. It started this sample at 2.66 and ended at 3.98. The median is 3.42. The autocorrelation of daily ratio changes is −0.03. The ratio drifted up for years. It did not snap back from one day to the next.
+
+![MNQ/MES cash-close ratio](research/es_nq_ratio.png)
+
+## Four cross-market rules
+
+These four were written in `research/cross.py` before they were scored. They are not part of the 63. N for their p-values is 4. A candidate needs 40 train trades and 20 validation trades, positive expectancy and net in both, and validation expectancy at least 25% of train. The holdout was opened only for candidates. Adjusted p = min(1, raw validation bootstrap p × 4). Above 0.10 is not a recommendation.
+
+1. `x_confirm_mes`. Trade MES with `fh_15bp_1.5R` only when MNQ's first hour has the same sign and is also at least 15bp.
+2. `x_confirm_mnq`. The mirror on MNQ, requiring MES to agree by 15bp.
+3. `x_diverge_fade`. If the two first hours have opposite signs and each is at least 15bp, fade the market with the larger move. Stop at that market's first-hour extreme. Target its 8:30 open. Flat at 12:00 CT.
+4. `x_ratio_revert`. At 9:30, if the MNQ/MES ratio is more than 0.75% away from the median of the prior 20 cash closes, short the rich leg and buy the cheap leg. Each leg risks $100 with a 0.5% stop. Both legs have to fit at least one contract.
+
+| rule | candidate | train n | train $/trade | val n | val $/trade | holdout n | holdout $/trade | bootstrap p | adjusted p |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| x_confirm_mes | yes | 577 | $6.02 | 149 | $10.91 | 111 | $12.28 | 0.212 | 0.848 |
+| x_confirm_mnq | yes | 302 | $6.68 | 35 | $25.17 | 15 | $80.25 | 0.193 | 0.772 |
+| x_diverge_fade | no | 32 | $1.53 | 1 | $67.28 | — | — | — | — |
+| x_ratio_revert | no | 135 | −$11.81 | 0 | — | — | — | — | — |
+
+Requiring the other index to confirm did not improve the rule that was already on the table. Unfiltered MES `fh_15bp_1.5R` made $12.95 in validation and $16.93 on the holdout. The confirmed version made $10.91 and $12.28. Train looked better ($6.02 versus $1.07) because the filter keeps the days that already moved 15bp in both indexes. That is the in-sample cut. The later windows did not pay more per trade, and the adjusted p-value is 0.85.
+
+The MNQ confirmation has 35 validation trades, under the 40-trade gate used for the 63, and 15 holdout trades. The holdout win rate is 66.7% and the holdout average is $80.25. That is a handful of trades. The p-value was computed on the validation days, and the adjusted value is 0.77. Unfiltered MNQ first-hour momentum made $38.81 in validation on 87 trades. The filter cut that to $25.17 on 35.
+
+The fade almost never fired once both first hours had to be 15bp and opposite. Train was 32 trades and $1.53 a trade. Validation was one trade. There is no holdout.
+
+The ratio rule lost $11.81 a trade on 135 train trades (win rate 35.6%, net −$1,594). Validation took zero trades. A 0.5% stop on one micro does not fit inside $100 once the indexes are high: 0.5% of a 5,000 MES is 25 points, and 25 × $5 is already $125 before fees. The same stop on MNQ is larger than $100 as well. Both legs have to be at least one contract, so the rule goes silent. The stop and the $100 risk were not widened after that result. The ratio's own path, a multi-year rise with no day-to-day snapback, is the other reason a fade of the ratio was a bad bet in this sample.
+
+## Event days
+
+Tags cover both files. A session is red when it is NFP, CPI, or an FOMC decision day. That set was written down before the trade results. PPI, ISM, notation votes, OPEX, roll week, half days, month-end, and VIX regime are tags for description. They are not extra filters. There are about fourteen tags, two predeclared rules, and two markets, scored on train and on validation. That is a pile of slices. A slice that looks good is not a new rule.
+
+NFP, CPI, and PPI are 8:30 AM ET, which is 7:30 AM CT, before the cash open. First-hour momentum on those days is the reaction, not the print. ISM manufacturing and services are 10:00 AM ET, which is 9:00 AM CT, inside the 8:30–9:30 signal window. FOMC decisions are typically 2:00 PM ET, which is 1:00 PM CT, after the 9:30 entry, so a morning trade is still on when the statement hits. US data is not released at 8:30 CT. 8:30 CT is the stock open.
+
+Sources, retrieved 2026-10-10:
+
+- NFP, CPI, and PPI: BLS Schedule of Selected Releases. `bls.gov` returned HTTP 403, so the annual pages were read from the Wayback Machine. Only 8:30 AM ET rows named "Employment Situation for", "Consumer Price Index for", or "Producer Price Index for" were kept. The files hold 95, 95, and 95 dates.
+- FOMC: statement links `monetaryYYYYMMDDa.htm` on the Fed's current calendar page, plus the 2019 and 2020 historical pages. The historical pages' "Released" dates are often the minutes, so those dates were not used. Sixty-four decision days, including the unscheduled statements on 2019-10-11, 2020-03-03, and 2020-03-15. Four notation votes (2020-03-23, 2020-03-31, 2020-08-27, 2025-08-22) are tagged `fomc_notation` and are not red. Sunday 2020-03-15 is applied to the Monday cash session.
+- VIX: Cboe `VIX_History.csv`. FRED `VIXCLS` returned HTTP 500. Closes used here run through 2026-10-09. High is a prior close of 20 or above. Low is under 15. Those round numbers were not fit to the trades.
+- ISM: the standing rule, manufacturing on the first NYSE business day and services on the third, 10:00 AM ET. A published shift off that rule is not listed.
+- Half days: the NYSE 1:00 PM ET pattern (Friday after Thanksgiving, July 3 when July 4 is Tuesday–Friday, December 24 when it is a weekday and not the observed Christmas close). An early close outside that pattern is missed. These are not bar-verified CME halts.
+- OPEX is the third Friday, moved to the prior weekday if that Friday is a full NYSE close. Quad witching is the March, June, September, and December OPEX. Roll week is the Monday–Friday cash sessions of the week that contains that expiration. Volume often shifts the week before. This study uses one definition.
+- Month-end is the last loaded cash session of the calendar month.
+
+Gaps: the archived 2025 BLS schedule has no CPI, Employment Situation, or PPI row for the October 2025 reference month. September 2025 CPI on 2025-10-24, September employment on 2025-11-20, and September PPI on 2025-11-25 are tagged. The missing October reference month is the funding-lapse gap. `fomchistorical2021.htm` through `fomchistorical2024.htm` returned 404; those years were taken from the current calendar page instead.
+
+On the 1,912 matched cash sessions the tags land 87 NFP, 88 CPI, 88 PPI, 61 FOMC decisions, 4 notation votes, 88 ISM manufacturing, 88 ISM services, 89 OPEX, 30 quad witching, 147 roll-week sessions, 15 half days, and 89 month-ends. VIX is high on 729 sessions, mid on 786, and low on 397. Red is 233 sessions.
+
+Skipping red days is "supported" only if, on train and on validation, the non-red book has higher expectancy than the all-days book, the non-red net is positive, and the non-red validation sample has at least 40 trades. The holdout of a filtered book was opened only where that was true. One book passed: MES `fh_15bp_1.5R`. The holdout then reversed it.
+
+| book | split | all n | all $/trade | red n | red $/trade | other days n | other $/trade |
+|---|---|---:|---:|---:|---:|---:|---:|
+| MES fh_15bp_1.5R | train | 715 | $1.07 | 85 | −$8.30 | 630 | $2.33 |
+| MES fh_15bp_1.5R | validation | 171 | $12.95 | 24 | −$9.23 | 147 | $16.57 |
+| MES fh_15bp_1.5R | holdout | 135 | $16.93 | 16 | $32.61 | 119 | $14.82 |
+| MES orb_15_opposite_1R | train | 1157 | −$5.31 | 136 | −$0.11 | 1021 | −$6.00 |
+| MES orb_15_opposite_1R | validation | 365 | $3.38 | 44 | $22.50 | 321 | $0.76 |
+| MES orb_15_opposite_1R | holdout | 295 | $0.19 | 35 | −$14.63 | 260 | $2.18 |
+| MNQ fh_15bp_1.5R | train | 499 | $7.98 | 58 | $13.81 | 441 | $7.21 |
+| MNQ fh_15bp_1.5R | validation | 87 | $38.81 | 5 | $34.64 | 82 | $39.07 |
+| MNQ fh_15bp_1.5R | holdout | 39 | $32.06 | 2 | −$15.97 | 37 | $34.66 |
+| MNQ orb_15_opposite_1R | train | 853 | $2.96 | 90 | $9.83 | 763 | $2.15 |
+| MNQ orb_15_opposite_1R | validation | 218 | $15.69 | 21 | $50.07 | 197 | $12.02 |
+| MNQ orb_15_opposite_1R | holdout | 85 | $3.77 | 9 | −$30.61 | 76 | $7.85 |
+
+On MES first-hour momentum, train and validation made their money on the other days, and the red days lost about $8 to $9 a trade. That is why the skip gate passed. The holdout red days made $32.61 a trade (16 trades, net $522) and the other days made $14.82, which is worse than the unfiltered $16.93. The filter that was chosen on the first two windows threw away the better holdout days.
+
+The red label is also a mixture. On MES first-hour momentum in train, NFP made $36.19 a trade (32 trades, net $1,158), CPI lost $25.35 (34 trades, net −$862), and FOMC lost $57.19 (20 trades, net −$1,144). Validation NFP flipped to −$8.01 on 9 trades. The train loss on "red" is CPI and FOMC swamping NFP. That is a description of three small slices. It is not a reason to trade only NFP or to drop CPI after the fact.
+
+MNQ first-hour momentum does not support a skip. In train the red days were the better slice ($13.81 versus $7.21). Validation has 5 red trades. The two MNQ opening-range finalists tell the same story in train and validation: `orb_15_opposite_2R` red expectancy was $13.30 in train and $34.18 in validation, against $6.22 and $16.98 on all days. `orb_30_opposite_1R` was worse on red days in train (−$13.19) and better on 8 red validation trades ($25.84). The both-windows gate fails. The MNQ opening-range baseline was also better on red days in train and in validation. Skipping those days would have cut the better slice.
+
+One ugly descriptive cell, so the size of the temptation is on the page: MNQ first-hour momentum lost $85.67 a trade on 25 train PPI days. The same cell in validation was +$92.95 on 6 trades. A tag that large, in a list this long, that then flips, is why the red set was not edited after the results.
+
+## Combine: MNQ, the pair, and red days
+
+Same Combine as the MES section. Unfinished attempts count as not passed. Read the all-starts column.
+
+| book | split | starts | passed | failed | censored | all-starts pass rate | median days | passes that also met 40% |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| MNQ fh_15bp_1.5R | train | 56 | 11 | 16 | 29 | 19.6% | 236 | 11 |
+| MNQ fh_15bp_1.5R | validation | 18 | 6 | 0 | 12 | 33.3% | 149 | 6 |
+| MNQ fh_15bp_1.5R | holdout | 15 | 0 | 0 | 15 | 0% | — | 0 |
+| MNQ orb_15_opposite_2R | train | 56 | 27 | 6 | 23 | 48.2% | 391 | 27 |
+| MNQ orb_15_opposite_2R | validation | 18 | 3 | 0 | 15 | 16.7% | 216 | 3 |
+| MNQ orb_15_opposite_2R | holdout | 15 | 0 | 0 | 15 | 0% | — | 0 |
+| MNQ orb_30_opposite_1R | train | 56 | 16 | 0 | 40 | 28.6% | 805.5 | 16 |
+| MNQ orb_30_opposite_1R | validation | 18 | 0 | 0 | 18 | 0% | — | 0 |
+| MNQ orb_30_opposite_1R | holdout | 15 | 0 | 0 | 15 | 0% | — | 0 |
+| MES + MNQ fh, 50/50 | train | 56 | 1 | 26 | 29 | 1.8% | 333 | 1 |
+| MES + MNQ fh, 50/50 | validation | 18 | 7 | 0 | 11 | 38.9% | 250 | 7 |
+| MES + MNQ fh, 50/50 | holdout | 15 | 0 | 0 | 15 | 0% | — | 0 |
+| MES fh, skip red | train | 56 | 6 | 31 | 19 | 10.7% | 400.5 | 6 |
+| MES fh, skip red | validation | 18 | 8 | 0 | 10 | 44.4% | 195.5 | 8 |
+| MES fh, skip red | holdout | 15 | 0 | 0 | 15 | 0% | — | 0 |
+
+Every MNQ finalist holdout attempt was still running when the file ended. Zero of 15 passed. The train pass rates look kinder than MES because the dollar swings are larger, and they come with the same problem: the passes take hundreds of sessions, and the holdout does not finish. `orb_30_opposite_1R` passed 16 of 56 train starts and then passed none in validation or the holdout. Every pass that did occur also met the 40% consistency path. Failures that happened were the trailing $2,000 loss.
+
+The paired book puts half the dollars on MES `fh_15bp_1.5R` and half on the same rule in MNQ. Train passed 1 of 56 starts and failed 26 on the trailing loss. Validation passed 7 of 18 and left 11 unfinished. The holdout passed none. Halving each book makes the $3,000 target harder. The pair does not get a red-day filter: MNQ first-hour momentum did not support the skip, and the rule required both books to support it.
+
+The one supported filter, skipping red days on MES first-hour momentum, raised the train all-starts rate from 7.1% to 10.7% and the validation rate from 33.3% to 44.4%. The holdout rate went from 2 of 15 to 0 of 15. That is the same reversal as the per-trade numbers. The filter is not supported by the split that was not used to choose it.
+
+![MNQ Combine pass rate by monthly start](research/mnq_combine_pass_rate.png)
+
+## Recommendation after MNQ, correlation, and events
+
+Do not change the live bot. Do not switch to first-hour momentum on MES or on MNQ. Do not trade the three MNQ finalists. Do not require the other index to confirm. Do not fade an ES/NQ divergence or the NQ/ES ratio. Do not skip NFP, CPI, or FOMC days. Adjusted p-values for the three MNQ finalists are 1.000. The two cross rules that qualified have adjusted p-values of 0.85 and 0.77. The fade and the ratio rule did not qualify. The only event filter that cleared its own train and validation gate failed the holdout, and it made the Combine holdout worse. Positive dollars with an adjusted p-value of 1 are not an edge. M2K was not tested. Leave the live settings where they are.
 
 ## What this study did not change
 
-Live defaults are untouched: the 2-tick retest, the $1.40 fee placeholder, the $200 risk, the 2-contract cap, the morning window, and the flatten times. Research limit fills are stricter than the paper broker. The paper broker fills a target when price touches it. This study fills a limit only when price trades through it. Stops still fill on a touch, and if a stop and a target are in the same bar the stop wins. The research sizer is also separate. It can use up to 50 MES and it charges both sides of slippage up front. It does not call the live sizer, which is capped at 2 MES.
+Live defaults are untouched: the 2-tick retest, the $1.40 fee placeholder, the $200 risk, the 2-contract cap, the morning window, and the flatten times. Research limit fills are stricter than the paper broker. The paper broker fills a target when price touches it. This study fills a limit only when price trades through it. Stops still fill on a touch, and if a stop and a target are in the same bar the stop wins. The research sizer is also separate. It can use up to 50 MES, or 50 MNQ when the study is priced as MNQ, and it charges both sides of slippage up front. It does not call the live sizer, which is capped at 2 MES.
 
