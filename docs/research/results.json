@@ -1,0 +1,2246 @@
+{
+  "load": {
+    "bars": 2610341,
+    "sessions": 1912,
+    "rolls": 30,
+    "contracts": 31,
+    "first": "2019-05-06",
+    "last": "2026-09-30"
+  },
+  "splits": {
+    "train": {
+      "n": 1203,
+      "first": "2019-05-06",
+      "last": "2023-12-29"
+    },
+    "validation": {
+      "n": 385,
+      "first": "2024-01-02",
+      "last": "2025-06-30"
+    },
+    "holdout": {
+      "n": 324,
+      "first": "2025-07-01",
+      "last": "2026-09-30"
+    }
+  },
+  "n_eligible": 63,
+  "n_total": 66,
+  "finalists": [
+    "fh_15bp_1.5R"
+  ],
+  "examined": [
+    {
+      "name": "fh_25bp_time",
+      "reasons": "passed the gates but lost the rank or the correlation cutoff",
+      "neighbor_note": "0 of 2 (none)",
+      "null_ge": 0.0
+    },
+    {
+      "name": "orb_15_mid_2R",
+      "reasons": "train expectancy is not positive; train net is not positive",
+      "neighbor_note": "3 of 6 (orb_5_mid_2R, orb_15_atr_2R, orb_30_mid_2R)",
+      "null_ge": 0.0
+    },
+    {
+      "name": "fh_15bp_time",
+      "reasons": "passed the gates but lost the rank or the correlation cutoff",
+      "neighbor_note": "0 of 2 (none)",
+      "null_ge": 0.0
+    },
+    {
+      "name": "fh_25bp_1.5R",
+      "reasons": "passed the gates but lost the rank or the correlation cutoff",
+      "neighbor_note": "0 of 2 (none)",
+      "null_ge": 0.0
+    },
+    {
+      "name": "gap_fade_25bp",
+      "reasons": "train expectancy is not positive; train net is not positive",
+      "neighbor_note": "1 of 2 (gap_go_25bp)",
+      "null_ge": 0.0
+    }
+  ],
+  "pvalues": {
+    "fh_15bp_1.5R": {
+      "bootstrap": 0.15142428785607195,
+      "bootstrap_adjusted": 1.0,
+      "signflip": 0.13543228385807096,
+      "signflip_adjusted": 1.0,
+      "null_ge": 0.0
+    }
+  },
+  "null": {
+    "train": {
+      "n": 100,
+      "mean": -15.923225270157934,
+      "median": -15.923225270157936,
+      "p05": -24.48099750623441,
+      "p95": -7.36545303408146,
+      "share_positive": 0.0
+    },
+    "val": {
+      "n": 100,
+      "mean": -16.302077922077917,
+      "median": -16.302077922077917,
+      "p05": -18.789090909090906,
+      "p95": -13.81506493506493,
+      "share_positive": 0.0
+    }
+  },
+  "combine": {
+    "fh_15bp_1.5R": {
+      "train": {
+        "starts": 56,
+        "passes": 4,
+        "fails": 39,
+        "censored": 13,
+        "consistency_blocked": 0,
+        "pass_rate_resolved": 0.09302325581395349,
+        "pass_rate_all": 0.07142857142857142,
+        "median_days": 164.0,
+        "fail_reasons": {
+          "mll": 39
+        },
+        "passes_also_40": 4
+      },
+      "validation": {
+        "starts": 18,
+        "passes": 6,
+        "fails": 0,
+        "censored": 12,
+        "consistency_blocked": 0,
+        "pass_rate_resolved": 1.0,
+        "pass_rate_all": 0.3333333333333333,
+        "median_days": 210.0,
+        "fail_reasons": {},
+        "passes_also_40": 6
+      },
+      "holdout": {
+        "starts": 15,
+        "passes": 2,
+        "fails": 0,
+        "censored": 13,
+        "consistency_blocked": 0,
+        "pass_rate_resolved": 1.0,
+        "pass_rate_all": 0.13333333333333333,
+        "median_days": 232.5,
+        "fail_reasons": {},
+        "passes_also_40": 2
+      }
+    }
+  },
+  "combo_note": "",
+  "stats": {
+    "orb_5_opposite_1R": {
+      "train": {
+        "trades": 1189,
+        "wins": 594,
+        "win_rate": 0.49957947855340623,
+        "expectancy": -8.394272497897388,
+        "net": -9980.789999999995,
+        "avg_win": 135.34037037037038,
+        "avg_loss": -151.88734453781512,
+        "max_dd": 10695.299999999954,
+        "worst_day": -199.94,
+        "best_day": 191.28,
+        "avg_qty": 3.6223717409587888,
+        "profit_factor": 0.8895600089274481
+      },
+      "validation": {
+        "trades": 379,
+        "wins": 188,
+        "win_rate": 0.49604221635883905,
+        "expectancy": -9.44564643799472,
+        "net": -3579.8999999999987,
+        "avg_win": 137.87702127659574,
+        "avg_loss": -154.4543455497382,
+        "max_dd": 4790.0199999999995,
+        "worst_day": -199.94,
+        "best_day": 185.03,
+        "avg_qty": 3.0870712401055407,
+        "profit_factor": 0.8786506661857755
+      },
+      "holdout": null
+    },
+    "orb_5_opposite_2R": {
+      "train": {
+        "trades": 1189,
+        "wins": 510,
+        "win_rate": 0.4289318755256518,
+        "expectancy": -4.886072329688813,
+        "net": -5809.539999999998,
+        "avg_win": 188.10531372549022,
+        "avg_loss": -149.84278350515464,
+        "max_dd": 8584.64999999999,
+        "worst_day": -199.94,
+        "best_day": 380.06,
+        "avg_qty": 3.6223717409587888,
+        "profit_factor": 0.9428999958228188
+      },
+      "validation": {
+        "trades": 379,
+        "wins": 151,
+        "win_rate": 0.39841688654353563,
+        "expectancy": -14.511609498680738,
+        "net": -5499.9,
+        "avg_win": 194.98847682119205,
+        "avg_loss": -153.25947368421052,
+        "max_dd": 7110.869999999994,
+        "worst_day": -199.94,
+        "best_day": 360.12,
+        "avg_qty": 3.0870712401055407,
+        "profit_factor": 0.8426043895285945
+      },
+      "holdout": null
+    },
+    "orb_5_opposite_time": {
+      "train": {
+        "trades": 1189,
+        "wins": 506,
+        "win_rate": 0.4255677039529016,
+        "expectancy": -7.417611438183345,
+        "net": -8819.539999999997,
+        "avg_win": 177.13640316205533,
+        "avg_loss": -144.14430453879942,
+        "max_dd": 12251.719999999976,
+        "worst_day": -199.94,
+        "best_day": 1137.8,
+        "avg_qty": 3.6223717409587888,
+        "profit_factor": 0.9104165583212529
+      },
+      "validation": {
+        "trades": 379,
+        "wins": 153,
+        "win_rate": 0.40369393139841686,
+        "expectancy": -16.98192612137203,
+        "net": -6436.15,
+        "avg_win": 179.4021568627451,
+        "avg_loss": -149.93221238938054,
+        "max_dd": 7498.649999999992,
+        "worst_day": -199.94,
+        "best_day": 633.84,
+        "avg_qty": 3.0870712401055407,
+        "profit_factor": 0.8100572294027861
+      },
+      "holdout": null
+    },
+    "orb_5_mid_1R": {
+      "train": {
+        "trades": 1196,
+        "wins": 560,
+        "win_rate": 0.4682274247491639,
+        "expectancy": -27.21845317725752,
+        "net": -32553.269999999993,
+        "avg_win": 141.50489285714286,
+        "avg_loss": -175.7798899371069,
+        "max_dd": 32756.23999999983,
+        "worst_day": -199.88,
+        "best_day": 185.06,
+        "avg_qty": 5.866220735785953,
+        "profit_factor": 0.7088154577251908
+      },
+      "validation": {
+        "trades": 383,
+        "wins": 192,
+        "win_rate": 0.5013054830287206,
+        "expectancy": -14.458694516971272,
+        "net": -5537.679999999998,
+        "avg_win": 146.2918229166667,
+        "avg_loss": -176.05083769633507,
+        "max_dd": 6644.549999999995,
+        "worst_day": -199.88,
+        "best_day": 185.06,
+        "avg_qty": 5.206266318537859,
+        "profit_factor": 0.8353141093526353
+      },
+      "holdout": null
+    },
+    "orb_5_mid_2R": {
+      "train": {
+        "trades": 1196,
+        "wins": 431,
+        "win_rate": 0.3603678929765886,
+        "expectancy": -19.491655518394648,
+        "net": -23312.019999999997,
+        "avg_win": 257.10925754060327,
+        "avg_loss": -175.32824836601304,
+        "max_dd": 23454.60999999994,
+        "worst_day": -199.88,
+        "best_day": 370.06,
+        "avg_qty": 5.866220735785953,
+        "profit_factor": 0.8261932743743929
+      },
+      "validation": {
+        "trades": 383,
+        "wins": 139,
+        "win_rate": 0.3629242819843342,
+        "expectancy": -11.256997389033941,
+        "net": -4311.429999999999,
+        "avg_win": 275.72640287769786,
+        "avg_loss": -174.74344262295082,
+        "max_dd": 6983.930000000002,
+        "worst_day": -199.88,
+        "best_day": 370.06,
+        "avg_qty": 5.206266318537859,
+        "profit_factor": 0.8988814984028106
+      },
+      "holdout": null
+    },
+    "orb_5_mid_time": {
+      "train": {
+        "trades": 1196,
+        "wins": 390,
+        "win_rate": 0.32608695652173914,
+        "expectancy": -18.55520066889632,
+        "net": -22192.019999999997,
+        "avg_win": 300.4249230769231,
+        "avg_loss": -172.90042183622828,
+        "max_dd": 22563.41999999991,
+        "worst_day": -199.88,
+        "best_day": 1898.96,
+        "avg_qty": 5.866220735785953,
+        "profit_factor": 0.84075502372527
+      },
+      "validation": {
+        "trades": 383,
+        "wins": 117,
+        "win_rate": 0.30548302872062666,
+        "expectancy": -18.032454308093993,
+        "net": -6906.4299999999985,
+        "avg_win": 334.79,
+        "avg_loss": -173.22127819548874,
+        "max_dd": 10101.220000000003,
+        "worst_day": -199.88,
+        "best_day": 1206.4,
+        "avg_qty": 5.206266318537859,
+        "profit_factor": 0.8501106629227773
+      },
+      "holdout": null
+    },
+    "orb_5_atr_1R": {
+      "train": {
+        "trades": 1201,
+        "wins": 547,
+        "win_rate": 0.45545378850957535,
+        "expectancy": -42.02638634471273,
+        "net": -50473.689999999995,
+        "avg_win": 132.28669104204755,
+        "avg_loss": -187.8203516819572,
+        "max_dd": 50473.68999999998,
+        "worst_day": -199.88,
+        "best_day": 180.06,
+        "avg_qty": 9.160699417152372,
+        "profit_factor": 0.5890919416701382
+      },
+      "validation": {
+        "trades": 385,
+        "wins": 186,
+        "win_rate": 0.4831168831168831,
+        "expectancy": -28.952415584415576,
+        "net": -11146.679999999997,
+        "avg_win": 139.39166666666668,
+        "avg_loss": -186.2991457286432,
+        "max_dd": 11553.719999999985,
+        "worst_day": -199.88,
+        "best_day": 170.12,
+        "avg_qty": 7.646753246753247,
+        "profit_factor": 0.6993358873568285
+      },
+      "holdout": null
+    },
+    "orb_5_atr_2R": {
+      "train": {
+        "trades": 1201,
+        "wins": 356,
+        "win_rate": 0.2964196502914238,
+        "expectancy": -47.362564529558696,
+        "net": -56882.439999999995,
+        "avg_win": 284.86092696629214,
+        "avg_loss": -187.32891124260354,
+        "max_dd": 56882.43999999997,
+        "worst_day": -199.88,
+        "best_day": 367.56,
+        "avg_qty": 9.160699417152372,
+        "profit_factor": 0.6406507858563235
+      },
+      "validation": {
+        "trades": 385,
+        "wins": 125,
+        "win_rate": 0.3246753246753247,
+        "expectancy": -29.11150649350649,
+        "net": -11207.929999999998,
+        "avg_win": 295.04159999999996,
+        "avg_loss": -184.95434615384613,
+        "max_dd": 11873.169999999993,
+        "worst_day": -199.88,
+        "best_day": 350.15,
+        "avg_qty": 7.646753246753247,
+        "profit_factor": 0.7669293856924775
+      },
+      "holdout": null
+    },
+    "orb_5_atr_time": {
+      "train": {
+        "trades": 1201,
+        "wins": 235,
+        "win_rate": 0.19567027477102414,
+        "expectancy": -40.68791840133222,
+        "net": -48866.189999999995,
+        "avg_win": 557.2726382978724,
+        "avg_loss": -186.1545134575569,
+        "max_dd": 48952.969999999936,
+        "worst_day": -199.88,
+        "best_day": 2712.8,
+        "avg_qty": 9.160699417152372,
+        "profit_factor": 0.7282573649552906
+      },
+      "validation": {
+        "trades": 385,
+        "wins": 80,
+        "win_rate": 0.2077922077922078,
+        "expectancy": -27.75436363636363,
+        "net": -10685.429999999998,
+        "avg_win": 574.756625,
+        "avg_loss": -185.79003278688523,
+        "max_dd": 16171.11000000001,
+        "worst_day": -199.88,
+        "best_day": 1690.24,
+        "avg_qty": 7.646753246753247,
+        "profit_factor": 0.8114312366718927
+      },
+      "holdout": null
+    },
+    "orb_15_opposite_1R": {
+      "train": {
+        "trades": 1157,
+        "wins": 577,
+        "win_rate": 0.49870354364736386,
+        "expectancy": -5.308530682800344,
+        "net": -6141.9699999999975,
+        "avg_win": 112.09769497400347,
+        "avg_loss": -122.10748275862068,
+        "max_dd": 9566.449999999999,
+        "worst_day": -199.94,
+        "best_day": 191.28,
+        "avg_qty": 2.6802074330164216,
+        "profit_factor": 0.91327637578764
+      },
+      "validation": {
+        "trades": 365,
+        "wins": 191,
+        "win_rate": 0.5232876712328767,
+        "expectancy": 3.384356164383564,
+        "net": 1235.2900000000009,
+        "avg_win": 123.4116230366492,
+        "avg_loss": -128.36971264367816,
+        "max_dd": 2875.1900000000005,
+        "worst_day": -199.94,
+        "best_day": 187.56,
+        "avg_qty": 2.3095890410958906,
+        "profit_factor": 1.0553040718864737
+      },
+      "holdout": null
+    },
+    "orb_15_opposite_2R": {
+      "train": {
+        "trades": 1157,
+        "wins": 545,
+        "win_rate": 0.4710458081244598,
+        "expectancy": -0.28476231633534893,
+        "net": -329.4699999999987,
+        "avg_win": 135.39381651376146,
+        "avg_loss": -121.10964052287581,
+        "max_dd": 5407.6500000000015,
+        "worst_day": -199.94,
+        "best_day": 380.06,
+        "avg_qty": 2.6802074330164216,
+        "profit_factor": 0.9955548569801848
+      },
+      "validation": {
+        "trades": 365,
+        "wins": 177,
+        "win_rate": 0.4849315068493151,
+        "expectancy": 4.148054794520549,
+        "net": 1514.0400000000004,
+        "avg_win": 143.73875706214687,
+        "avg_loss": -127.27510638297873,
+        "max_dd": 3127.0999999999995,
+        "worst_day": -199.94,
+        "best_day": 380.06,
+        "avg_qty": 2.3095890410958906,
+        "profit_factor": 1.0632755649096528
+      },
+      "holdout": null
+    },
+    "orb_15_opposite_time": {
+      "train": {
+        "trades": 1157,
+        "wins": 545,
+        "win_rate": 0.4710458081244598,
+        "expectancy": -6.052912705272255,
+        "net": -7003.219999999998,
+        "avg_win": 114.11370642201835,
+        "avg_loss": -113.06403594771243,
+        "max_dd": 10862.429999999962,
+        "worst_day": -199.94,
+        "best_day": 662.65,
+        "avg_qty": 2.6802074330164216,
+        "profit_factor": 0.8987903638966812
+      },
+      "validation": {
+        "trades": 365,
+        "wins": 177,
+        "win_rate": 0.4849315068493151,
+        "expectancy": 0.6275068493150697,
+        "net": 229.04000000000045,
+        "avg_win": 125.08073446327684,
+        "avg_loss": -116.5438829787234,
+        "max_dd": 3550.19,
+        "worst_day": -199.94,
+        "best_day": 531.28,
+        "avg_qty": 2.3095890410958906,
+        "profit_factor": 1.0104535548430529
+      },
+      "holdout": null
+    },
+    "orb_15_mid_1R": {
+      "train": {
+        "trades": 1191,
+        "wins": 569,
+        "win_rate": 0.47774979009235935,
+        "expectancy": -20.460579345088156,
+        "net": -24368.549999999996,
+        "avg_win": 138.49140597539542,
+        "avg_loss": -165.86842443729904,
+        "max_dd": 25567.99999999987,
+        "worst_day": -199.94,
+        "best_day": 185.06,
+        "avg_qty": 4.588581024349287,
+        "profit_factor": 0.7638023436233887
+      },
+      "validation": {
+        "trades": 382,
+        "wins": 207,
+        "win_rate": 0.5418848167539267,
+        "expectancy": 2.941465968586391,
+        "net": 1123.6400000000015,
+        "avg_win": 147.438115942029,
+        "avg_loss": -167.97742857142856,
+        "max_dd": 2528.28,
+        "worst_day": -199.88,
+        "best_day": 192.53,
+        "avg_qty": 4.026178010471204,
+        "profit_factor": 1.0382241831810737
+      },
+      "holdout": null
+    },
+    "orb_15_mid_2R": {
+      "train": {
+        "trades": 1191,
+        "wins": 469,
+        "win_rate": 0.39378673383711166,
+        "expectancy": -13.985978169605369,
+        "net": -16657.299999999996,
+        "avg_win": 216.46466950959487,
+        "avg_loss": -163.68314404432132,
+        "max_dd": 18286.749999999967,
+        "worst_day": -199.94,
+        "best_day": 375.06,
+        "avg_qty": 4.588581024349287,
+        "profit_factor": 0.8590505285911915
+      },
+      "validation": {
+        "trades": 382,
+        "wins": 163,
+        "win_rate": 0.42670157068062825,
+        "expectancy": 9.299450261780105,
+        "net": 3552.3900000000003,
+        "avg_win": 242.9988343558282,
+        "avg_loss": -164.64118721461188,
+        "max_dd": 3194.029999999999,
+        "worst_day": -199.88,
+        "best_day": 371.34,
+        "avg_qty": 4.026178010471204,
+        "profit_factor": 1.098523092420157
+      },
+      "holdout": null
+    },
+    "orb_15_mid_time": {
+      "train": {
+        "trades": 1191,
+        "wins": 458,
+        "win_rate": 0.38455079764903444,
+        "expectancy": -19.0384550797649,
+        "net": -22674.799999999996,
+        "avg_win": 204.49456331877727,
+        "avg_loss": -158.70847203274215,
+        "max_dd": 24998.659999999865,
+        "worst_day": -199.94,
+        "best_day": 1280.24,
+        "avg_qty": 4.588581024349287,
+        "profit_factor": 0.8050876399889249
+      },
+      "validation": {
+        "trades": 382,
+        "wins": 155,
+        "win_rate": 0.40575916230366493,
+        "expectancy": 2.7385863874345566,
+        "net": 1046.1400000000006,
+        "avg_win": 239.81522580645162,
+        "avg_loss": -159.1419383259912,
+        "max_dd": 4617.83,
+        "worst_day": -199.88,
+        "best_day": 1062.56,
+        "avg_qty": 4.026178010471204,
+        "profit_factor": 1.0289587163759832
+      },
+      "holdout": null
+    },
+    "orb_15_atr_1R": {
+      "train": {
+        "trades": 1198,
+        "wins": 563,
+        "win_rate": 0.4699499165275459,
+        "expectancy": -34.98029215358931,
+        "net": -41906.38999999999,
+        "avg_win": 135.72836589698048,
+        "avg_loss": -186.33300787401575,
+        "max_dd": 42413.13999999984,
+        "worst_day": -199.88,
+        "best_day": 180.09,
+        "avg_qty": 8.37813021702838,
+        "profit_factor": 0.6458259558325262
+      },
+      "validation": {
+        "trades": 385,
+        "wins": 201,
+        "win_rate": 0.522077922077922,
+        "expectancy": -13.162467532467526,
+        "net": -5067.549999999997,
+        "avg_win": 143.4804975124378,
+        "avg_loss": -184.2778804347826,
+        "max_dd": 7037.809999999999,
+        "worst_day": -199.85,
+        "best_day": 187.56,
+        "avg_qty": 6.922077922077922,
+        "profit_factor": 0.8505461830594333
+      },
+      "holdout": null
+    },
+    "orb_15_atr_2R": {
+      "train": {
+        "trades": 1198,
+        "wins": 370,
+        "win_rate": 0.3088480801335559,
+        "expectancy": -40.467562604340564,
+        "net": -48480.14,
+        "avg_win": 284.4107837837838,
+        "avg_loss": -185.64266908212562,
+        "max_dd": 49869.95999999983,
+        "worst_day": -199.88,
+        "best_day": 367.59,
+        "avg_qty": 8.37813021702838,
+        "profit_factor": 0.684604331486396
+      },
+      "validation": {
+        "trades": 385,
+        "wins": 140,
+        "win_rate": 0.36363636363636365,
+        "expectancy": -7.9481818181818165,
+        "net": -3060.0499999999993,
+        "avg_win": 301.00842857142857,
+        "avg_loss": -184.49481632653058,
+        "max_dd": 7991.97,
+        "worst_day": -199.94,
+        "best_day": 363.84,
+        "avg_qty": 6.922077922077922,
+        "profit_factor": 0.9323016209957119
+      },
+      "holdout": null
+    },
+    "orb_15_atr_time": {
+      "train": {
+        "trades": 1198,
+        "wins": 285,
+        "win_rate": 0.2378964941569282,
+        "expectancy": -30.325659432387305,
+        "net": -36330.13999999999,
+        "avg_win": 463.10491228070174,
+        "avg_loss": -184.3538225629792,
+        "max_dd": 39366.88999999979,
+        "worst_day": -199.88,
+        "best_day": 2239.02,
+        "avg_qty": 8.37813021702838,
+        "profit_factor": 0.7841539294408865
+      },
+      "validation": {
+        "trades": 385,
+        "wins": 113,
+        "win_rate": 0.2935064935064935,
+        "expectancy": 6.590779220779224,
+        "net": 2537.450000000001,
+        "avg_win": 460.29106194690263,
+        "avg_loss": -181.89499999999998,
+        "max_dd": 8049.790000000002,
+        "worst_day": -199.94,
+        "best_day": 1593.84,
+        "avg_qty": 6.922077922077922,
+        "profit_factor": 1.0512870628336
+      },
+      "holdout": null
+    },
+    "orb_30_opposite_1R": {
+      "train": {
+        "trades": 1094,
+        "wins": 540,
+        "win_rate": 0.4936014625228519,
+        "expectancy": -3.8628610603290654,
+        "net": -4225.9699999999975,
+        "avg_win": 89.68896296296296,
+        "avg_loss": -95.050559566787,
+        "max_dd": 8203.499999999996,
+        "worst_day": -199.94,
+        "best_day": 187.56,
+        "avg_qty": 2.2175502742230346,
+        "profit_factor": 0.9197468723181905
+      },
+      "validation": {
+        "trades": 336,
+        "wins": 169,
+        "win_rate": 0.5029761904761905,
+        "expectancy": -2.4079464285714267,
+        "net": -809.0699999999994,
+        "avg_win": 96.40964497041419,
+        "avg_loss": -102.40898203592813,
+        "max_dd": 2770.82,
+        "worst_day": -199.94,
+        "best_day": 193.78,
+        "avg_qty": 1.9523809523809523,
+        "profit_factor": 0.9526923279325004
+      },
+      "holdout": null
+    },
+    "orb_30_opposite_2R": {
+      "train": {
+        "trades": 1094,
+        "wins": 528,
+        "win_rate": 0.4826325411334552,
+        "expectancy": -0.8898263254113334,
+        "net": -973.4699999999988,
+        "avg_win": 99.67742424242424,
+        "avg_loss": -94.70521201413428,
+        "max_dd": 5756.949999999987,
+        "worst_day": -199.94,
+        "best_day": 380.06,
+        "avg_qty": 2.2175502742230346,
+        "profit_factor": 0.9818393135478045
+      },
+      "validation": {
+        "trades": 336,
+        "wins": 167,
+        "win_rate": 0.49702380952380953,
+        "expectancy": 0.5496428571428581,
+        "net": 184.68000000000032,
+        "avg_win": 104.65952095808383,
+        "avg_loss": -102.32816568047336,
+        "max_dd": 2941.350000000002,
+        "worst_day": -199.94,
+        "best_day": 360.12,
+        "avg_qty": 1.9523809523809523,
+        "profit_factor": 1.0106791816096952
+      },
+      "holdout": null
+    },
+    "orb_30_opposite_time": {
+      "train": {
+        "trades": 1094,
+        "wins": 524,
+        "win_rate": 0.4789762340036563,
+        "expectancy": -5.4110786106032895,
+        "net": -5919.719999999998,
+        "avg_win": 84.03330152671755,
+        "avg_loss": -87.63714035087719,
+        "max_dd": 10005.14999999993,
+        "worst_day": -199.94,
+        "best_day": 630.06,
+        "avg_qty": 2.2175502742230346,
+        "profit_factor": 0.881494607849712
+      },
+      "validation": {
+        "trades": 336,
+        "wins": 158,
+        "win_rate": 0.47023809523809523,
+        "expectancy": -4.163898809523808,
+        "net": -1399.0699999999995,
+        "avg_win": 91.58120253164557,
+        "avg_loss": -89.15112359550561,
+        "max_dd": 3191.3200000000024,
+        "worst_day": -199.94,
+        "best_day": 531.28,
+        "avg_qty": 1.9523809523809523,
+        "profit_factor": 0.9118357290045309
+      },
+      "holdout": null
+    },
+    "orb_30_mid_1R": {
+      "train": {
+        "trades": 1176,
+        "wins": 579,
+        "win_rate": 0.4923469387755102,
+        "expectancy": -13.62457482993197,
+        "net": -16022.499999999996,
+        "avg_win": 125.54096718480139,
+        "avg_loss": -148.59417085427137,
+        "max_dd": 17546.26999999997,
+        "worst_day": -199.94,
+        "best_day": 187.56,
+        "avg_qty": 3.826530612244898,
+        "profit_factor": 0.8193848499933266
+      },
+      "validation": {
+        "trades": 377,
+        "wins": 195,
+        "win_rate": 0.5172413793103449,
+        "expectancy": -6.519999999999996,
+        "net": -2458.0399999999986,
+        "avg_win": 129.70189743589742,
+        "avg_loss": -152.47203296703296,
+        "max_dd": 5628.249999999996,
+        "worst_day": -199.88,
+        "best_day": 187.56,
+        "avg_qty": 3.2679045092838197,
+        "profit_factor": 0.9114216947009918
+      },
+      "holdout": null
+    },
+    "orb_30_mid_2R": {
+      "train": {
+        "trades": 1176,
+        "wins": 506,
+        "win_rate": 0.4302721088435374,
+        "expectancy": -10.715348639455781,
+        "net": -12601.249999999998,
+        "avg_win": 167.68920948616602,
+        "avg_loss": -145.45073134328356,
+        "max_dd": 17016.11999999996,
+        "worst_day": -199.94,
+        "best_day": 372.56,
+        "avg_qty": 3.826530612244898,
+        "profit_factor": 0.8706927380343902
+      },
+      "validation": {
+        "trades": 377,
+        "wins": 166,
+        "win_rate": 0.4403183023872679,
+        "expectancy": -8.336976127320954,
+        "net": -3143.0399999999995,
+        "avg_win": 171.8228313253012,
+        "avg_loss": -150.0740758293839,
+        "max_dd": 5452.849999999997,
+        "worst_day": -199.88,
+        "best_day": 360.12,
+        "avg_qty": 3.2679045092838197,
+        "profit_factor": 0.9007428558977035
+      },
+      "holdout": null
+    },
+    "orb_30_mid_time": {
+      "train": {
+        "trades": 1176,
+        "wins": 509,
+        "win_rate": 0.4328231292517007,
+        "expectancy": -12.29910714285714,
+        "net": -14463.749999999996,
+        "avg_win": 152.01349705304517,
+        "avg_loss": -137.68908545727135,
+        "max_dd": 18472.749999999953,
+        "worst_day": -199.94,
+        "best_day": 945.09,
+        "avg_qty": 3.826530612244898,
+        "profit_factor": 0.8425090664472092
+      },
+      "validation": {
+        "trades": 377,
+        "wins": 155,
+        "win_rate": 0.41114058355437666,
+        "expectancy": -12.677161803713526,
+        "net": -4779.289999999999,
+        "avg_win": 163.48322580645163,
+        "avg_loss": -135.672027027027,
+        "max_dd": 5674.599999999985,
+        "worst_day": -199.88,
+        "best_day": 1062.56,
+        "avg_qty": 3.2679045092838197,
+        "profit_factor": 0.8413207659302924
+      },
+      "holdout": null
+    },
+    "orb_30_atr_1R": {
+      "train": {
+        "trades": 1188,
+        "wins": 555,
+        "win_rate": 0.4671717171717172,
+        "expectancy": -35.01436868686868,
+        "net": -41597.06999999999,
+        "avg_win": 137.30365765765765,
+        "avg_loss": -186.0988941548183,
+        "max_dd": 42062.86999999988,
+        "worst_day": -199.88,
+        "best_day": 180.09,
+        "avg_qty": 7.833333333333333,
+        "profit_factor": 0.6468857544019301
+      },
+      "validation": {
+        "trades": 382,
+        "wins": 206,
+        "win_rate": 0.5392670157068062,
+        "expectancy": -6.613481675392664,
+        "net": -2526.3499999999976,
+        "avg_win": 143.6851941747573,
+        "avg_loss": -182.53125,
+        "max_dd": 4547.100000000003,
+        "worst_day": -199.88,
+        "best_day": 180.09,
+        "avg_qty": 6.4267015706806285,
+        "profit_factor": 0.9213599788330143
+      },
+      "holdout": null
+    },
+    "orb_30_atr_2R": {
+      "train": {
+        "trades": 1188,
+        "wins": 373,
+        "win_rate": 0.31397306397306396,
+        "expectancy": -39.31571548821549,
+        "net": -46707.07,
+        "avg_win": 277.96512064343165,
+        "avg_loss": -184.52522699386503,
+        "max_dd": 47610.36999999989,
+        "worst_day": -199.88,
+        "best_day": 367.59,
+        "avg_qty": 7.833333333333333,
+        "profit_factor": 0.6894230166942775
+      },
+      "validation": {
+        "trades": 382,
+        "wins": 139,
+        "win_rate": 0.36387434554973824,
+        "expectancy": -8.652094240837695,
+        "net": -3305.0999999999995,
+        "avg_win": 296.0673381294964,
+        "avg_loss": -182.9566255144033,
+        "max_dd": 7864.220000000001,
+        "worst_day": -199.88,
+        "best_day": 367.59,
+        "avg_qty": 6.4267015706806285,
+        "profit_factor": 0.9256586935309951
+      },
+      "holdout": null
+    },
+    "orb_30_atr_time": {
+      "train": {
+        "trades": 1188,
+        "wins": 313,
+        "win_rate": 0.26346801346801346,
+        "expectancy": -29.73869528619528,
+        "net": -35329.56999999999,
+        "avg_win": 393.14782747603834,
+        "avg_loss": -181.0112457142857,
+        "max_dd": 38614.449999999815,
+        "worst_day": -199.88,
+        "best_day": 2239.02,
+        "avg_qty": 7.833333333333333,
+        "profit_factor": 0.7769384367847327
+      },
+      "validation": {
+        "trades": 382,
+        "wins": 109,
+        "win_rate": 0.28534031413612565,
+        "expectancy": -18.45575916230366,
+        "net": -7050.0999999999985,
+        "avg_win": 370.60568807339445,
+        "avg_loss": -173.79531135531133,
+        "max_dd": 9288.869999999995,
+        "worst_day": -199.88,
+        "best_day": 1593.84,
+        "avg_qty": 6.4267015706806285,
+        "profit_factor": 0.8514082921849037
+      },
+      "holdout": null
+    },
+    "gap_fade_10bp": {
+      "train": {
+        "trades": 873,
+        "wins": 442,
+        "win_rate": 0.5063001145475372,
+        "expectancy": -3.1756701030927803,
+        "net": -2772.3599999999974,
+        "avg_win": 118.87574660633484,
+        "avg_loss": -128.34208816705336,
+        "max_dd": 3998.8099999999936,
+        "worst_day": -199.94,
+        "best_day": 193.78,
+        "avg_qty": 2.821305841924399,
+        "profit_factor": 0.9498809012456558
+      },
+      "validation": {
+        "trades": 219,
+        "wins": 118,
+        "win_rate": 0.5388127853881278,
+        "expectancy": 6.746849315068496,
+        "net": 1477.5600000000006,
+        "avg_win": 119.81618644067797,
+        "avg_loss": -125.35396039603961,
+        "max_dd": 1078.1200000000017,
+        "worst_day": -199.97,
+        "best_day": 190.03,
+        "avg_qty": 2.2922374429223744,
+        "profit_factor": 1.1167039867306439
+      },
+      "holdout": null
+    },
+    "gap_fade_25bp": {
+      "train": {
+        "trades": 601,
+        "wins": 294,
+        "win_rate": 0.4891846921797005,
+        "expectancy": -4.323128119800331,
+        "net": -2598.199999999999,
+        "avg_win": 109.75353741496599,
+        "avg_loss": -113.56918566775244,
+        "max_dd": 4769.289999999995,
+        "worst_day": -199.94,
+        "best_day": 193.78,
+        "avg_qty": 1.7637271214642263,
+        "profit_factor": 0.9254798550095309
+      },
+      "validation": {
+        "trades": 131,
+        "wins": 69,
+        "win_rate": 0.5267175572519084,
+        "expectancy": 7.189312977099238,
+        "net": 941.8000000000002,
+        "avg_win": 108.52130434782609,
+        "avg_loss": -105.58338709677419,
+        "max_dd": 760.1400000000006,
+        "worst_day": -199.97,
+        "best_day": 190.03,
+        "avg_qty": 1.4122137404580153,
+        "profit_factor": 1.1438703852787202
+      },
+      "holdout": null
+    },
+    "gap_go_10bp": {
+      "train": {
+        "trades": 873,
+        "wins": 404,
+        "win_rate": 0.4627720504009164,
+        "expectancy": -18.255853379152345,
+        "net": -15937.359999999997,
+        "avg_win": 116.16391089108912,
+        "avg_loss": -134.04601279317697,
+        "max_dd": 16699.149999999907,
+        "worst_day": -199.97,
+        "best_day": 190.03,
+        "avg_qty": 2.821305841924399,
+        "profit_factor": 0.7464931845634905
+      },
+      "validation": {
+        "trades": 219,
+        "wins": 95,
+        "win_rate": 0.4337899543378995,
+        "expectancy": -23.635570776255705,
+        "net": -5176.19,
+        "avg_win": 116.10673684210526,
+        "avg_loss": -130.69620967741935,
+        "max_dd": 5468.959999999993,
+        "worst_day": -199.94,
+        "best_day": 193.78,
+        "avg_qty": 2.2922374429223744,
+        "profit_factor": 0.6806068986624362
+      },
+      "holdout": null
+    },
+    "gap_go_25bp": {
+      "train": {
+        "trades": 601,
+        "wins": 293,
+        "win_rate": 0.4875207986688852,
+        "expectancy": -8.141763727121463,
+        "net": -4893.199999999999,
+        "avg_win": 107.08962457337884,
+        "avg_loss": -117.76123376623376,
+        "max_dd": 5915.7099999999655,
+        "worst_day": -199.97,
+        "best_day": 190.03,
+        "avg_qty": 1.7637271214642263,
+        "profit_factor": 0.8650913167354372
+      },
+      "validation": {
+        "trades": 131,
+        "wins": 58,
+        "win_rate": 0.44274809160305345,
+        "expectancy": -17.906106870229006,
+        "net": -2345.7,
+        "avg_win": 102.82206896551725,
+        "avg_loss": -113.82712328767123,
+        "max_dd": 2772.670000000002,
+        "worst_day": -199.94,
+        "best_day": 193.78,
+        "avg_qty": 1.4122137404580153,
+        "profit_factor": 0.7177045700160543
+      },
+      "holdout": null
+    },
+    "vwap_mr_0830_1030_1": {
+      "train": {
+        "trades": 719,
+        "wins": 503,
+        "win_rate": 0.6995827538247567,
+        "expectancy": -16.792767732962446,
+        "net": -12073.999999999998,
+        "avg_win": 35.95330019880716,
+        "avg_loss": -139.62273148148148,
+        "max_dd": 12441.639999999956,
+        "worst_day": -199.88,
+        "best_day": 210.21,
+        "avg_qty": 4.450625869262865,
+        "profit_factor": 0.5996486563825602
+      },
+      "validation": {
+        "trades": 238,
+        "wins": 174,
+        "win_rate": 0.7310924369747899,
+        "expectancy": -9.502184873949577,
+        "net": -2261.5199999999995,
+        "avg_win": 40.72120689655172,
+        "avg_loss": -146.04703125,
+        "max_dd": 3130.180000000003,
+        "worst_day": -199.85,
+        "best_day": 262.8,
+        "avg_qty": 4.163865546218488,
+        "profit_factor": 0.7580488305886053
+      },
+      "holdout": null
+    },
+    "vwap_mr_0830_1030_1.5": {
+      "train": {
+        "trades": 860,
+        "wins": 549,
+        "win_rate": 0.6383720930232558,
+        "expectancy": -11.508744186046508,
+        "net": -9897.519999999997,
+        "avg_win": 68.94790528233152,
+        "avg_loss": -153.53672025723472,
+        "max_dd": 10047.169999999998,
+        "worst_day": -199.88,
+        "best_day": 360.48,
+        "avg_qty": 4.844186046511628,
+        "profit_factor": 0.7927217469683719
+      },
+      "validation": {
+        "trades": 277,
+        "wins": 181,
+        "win_rate": 0.6534296028880866,
+        "expectancy": -10.13873646209386,
+        "net": -2808.429999999999,
+        "avg_win": 68.62281767955801,
+        "avg_loss": -158.63708333333332,
+        "max_dd": 3941.029999999998,
+        "worst_day": -199.88,
+        "best_day": 375.15,
+        "avg_qty": 4.40072202166065,
+        "profit_factor": 0.8155886470429098
+      },
+      "holdout": null
+    },
+    "vwap_mr_1030_1200_1": {
+      "train": {
+        "trades": 558,
+        "wins": 318,
+        "win_rate": 0.5698924731182796,
+        "expectancy": -29.403888888888886,
+        "net": -16407.37,
+        "avg_win": 59.83698113207547,
+        "avg_loss": -147.64804166666667,
+        "max_dd": 17044.700000000004,
+        "worst_day": -199.97,
+        "best_day": 390.24,
+        "avg_qty": 6.130824372759856,
+        "profit_factor": 0.5369796924160581
+      },
+      "validation": {
+        "trades": 192,
+        "wins": 121,
+        "win_rate": 0.6302083333333334,
+        "expectancy": -16.930989583333332,
+        "net": -3250.7499999999995,
+        "avg_win": 60.60909090909091,
+        "avg_loss": -149.07676056338028,
+        "max_dd": 3970.6999999999985,
+        "worst_day": -199.85,
+        "best_day": 227.92000000000002,
+        "avg_qty": 5.078125,
+        "profit_factor": 0.6928749250079126
+      },
+      "holdout": null
+    },
+    "vwap_mr_1030_1200_1.5": {
+      "train": {
+        "trades": 570,
+        "wins": 279,
+        "win_rate": 0.48947368421052634,
+        "expectancy": -23.88556140350877,
+        "net": -13614.769999999999,
+        "avg_win": 99.49745519713262,
+        "avg_loss": -142.18061855670103,
+        "max_dd": 13720.840000000004,
+        "worst_day": -199.97,
+        "best_day": 509.08,
+        "avg_qty": 6.519298245614035,
+        "profit_factor": 0.6709386154197169
+      },
+      "validation": {
+        "trades": 191,
+        "wins": 97,
+        "win_rate": 0.5078534031413613,
+        "expectancy": -16.740785340314133,
+        "net": -3197.4899999999993,
+        "avg_win": 111.23268041237112,
+        "avg_loss": -148.79851063829787,
+        "max_dd": 4172.600000000001,
+        "worst_day": -199.94,
+        "best_day": 406.64,
+        "avg_qty": 5.455497382198953,
+        "profit_factor": 0.7713965622511092
+      },
+      "holdout": null
+    },
+    "vwap_mr_1200_1400_1": {
+      "train": {
+        "trades": 524,
+        "wins": 345,
+        "win_rate": 0.6583969465648855,
+        "expectancy": -14.838511450381677,
+        "net": -7775.379999999999,
+        "avg_win": 54.54684057971014,
+        "avg_loss": -148.5700558659218,
+        "max_dd": 8705.13999999999,
+        "worst_day": -199.88,
+        "best_day": 276.76,
+        "avg_qty": 6.019083969465649,
+        "profit_factor": 0.707626972058401
+      },
+      "validation": {
+        "trades": 175,
+        "wins": 109,
+        "win_rate": 0.6228571428571429,
+        "expectancy": -18.40868571428571,
+        "net": -3221.5199999999995,
+        "avg_win": 53.580825688073396,
+        "avg_loss": -137.30045454545456,
+        "max_dd": 4293.479999999996,
+        "worst_day": -199.88,
+        "best_day": 315.27,
+        "avg_qty": 4.234285714285714,
+        "profit_factor": 0.6444956482299933
+      },
+      "holdout": null
+    },
+    "vwap_mr_1200_1400_1.5": {
+      "train": {
+        "trades": 597,
+        "wins": 322,
+        "win_rate": 0.5393634840871022,
+        "expectancy": -22.92902847571189,
+        "net": -13688.629999999997,
+        "avg_win": 85.78304347826086,
+        "avg_loss": -150.2209818181818,
+        "max_dd": 14530.449999999975,
+        "worst_day": -199.88,
+        "best_day": 460.24,
+        "avg_qty": 6.078726968174204,
+        "profit_factor": 0.6686425840041229
+      },
+      "validation": {
+        "trades": 192,
+        "wins": 101,
+        "win_rate": 0.5260416666666666,
+        "expectancy": -28.763125,
+        "net": -5522.5199999999995,
+        "avg_win": 79.77841584158416,
+        "avg_loss": -149.2323076923077,
+        "max_dd": 5917.469999999996,
+        "worst_day": -199.88,
+        "best_day": 330.36,
+        "avg_qty": 4.770833333333333,
+        "profit_factor": 0.5933385075558868
+      },
+      "holdout": null
+    },
+    "vwap_pb_0845_1100_1.5R": {
+      "train": {
+        "trades": 739,
+        "wins": 289,
+        "win_rate": 0.3910690121786198,
+        "expectancy": -21.8352097428958,
+        "net": -16136.219999999996,
+        "avg_win": 233.8853633217993,
+        "avg_loss": -186.06464444444444,
+        "max_dd": 17364.910000000014,
+        "worst_day": -199.88,
+        "best_day": 555.36,
+        "avg_qty": 9.47361299052774,
+        "profit_factor": 0.8072805998488697
+      },
+      "validation": {
+        "trades": 258,
+        "wins": 100,
+        "win_rate": 0.3875968992248062,
+        "expectancy": -16.227868217054258,
+        "net": -4186.789999999998,
+        "avg_win": 250.5542,
+        "avg_loss": -185.07727848101266,
+        "max_dd": 4705.549999999997,
+        "worst_day": -199.88,
+        "best_day": 708.96,
+        "avg_qty": 8.166666666666666,
+        "profit_factor": 0.8568237489574148
+      },
+      "holdout": null
+    },
+    "vwap_pb_0845_1100_2R": {
+      "train": {
+        "trades": 739,
+        "wins": 239,
+        "win_rate": 0.3234100135317997,
+        "expectancy": -27.53209742895805,
+        "net": -20346.219999999998,
+        "avg_win": 302.6940585774059,
+        "avg_loss": -185.38019999999997,
+        "max_dd": 20380.24999999995,
+        "worst_day": -199.88,
+        "best_day": 555.36,
+        "avg_qty": 9.47361299052774,
+        "profit_factor": 0.7804919835020139
+      },
+      "validation": {
+        "trades": 258,
+        "wins": 88,
+        "win_rate": 0.34108527131782945,
+        "expectancy": -12.705581395348831,
+        "net": -3278.0399999999986,
+        "avg_win": 320.3365909090909,
+        "avg_loss": -185.10388235294118,
+        "max_dd": 4482.439999999998,
+        "worst_day": -199.88,
+        "best_day": 708.96,
+        "avg_qty": 8.166666666666666,
+        "profit_factor": 0.8958282884714021
+      },
+      "holdout": null
+    },
+    "vwap_pb_0930_1200_1.5R": {
+      "train": {
+        "trades": 664,
+        "wins": 245,
+        "win_rate": 0.3689759036144578,
+        "expectancy": -29.19849397590361,
+        "net": -19387.799999999996,
+        "avg_win": 229.9226530612245,
+        "avg_loss": -180.713245823389,
+        "max_dd": 19481.289999999943,
+        "worst_day": -199.88,
+        "best_day": 320.48,
+        "avg_qty": 8.079819277108435,
+        "profit_factor": 0.7439501524389238
+      },
+      "validation": {
+        "trades": 215,
+        "wins": 94,
+        "win_rate": 0.4372093023255814,
+        "expectancy": -0.05051162790697185,
+        "net": -10.859999999998948,
+        "avg_win": 229.74989361702129,
+        "avg_loss": -178.57314049586776,
+        "max_dd": 2483.0299999999997,
+        "worst_day": -199.88,
+        "best_day": 318.9,
+        "avg_qty": 6.455813953488372,
+        "profit_factor": 0.999497393248131
+      },
+      "holdout": null
+    },
+    "vwap_pb_0930_1200_2R": {
+      "train": {
+        "trades": 664,
+        "wins": 200,
+        "win_rate": 0.30120481927710846,
+        "expectancy": -39.45075301204819,
+        "net": -26195.3,
+        "avg_win": 285.97090000000003,
+        "avg_loss": -179.7187068965517,
+        "max_dd": 26195.299999999945,
+        "worst_day": -199.88,
+        "best_day": 382.56,
+        "avg_qty": 8.079819277108435,
+        "profit_factor": 0.68586804954294
+      },
+      "validation": {
+        "trades": 215,
+        "wins": 81,
+        "win_rate": 0.3767441860465116,
+        "expectancy": -5.0214418604651145,
+        "net": -1079.6099999999997,
+        "avg_win": 281.90419753086417,
+        "avg_loss": -178.4615671641791,
+        "max_dd": 3808.57,
+        "worst_day": -199.88,
+        "best_day": 363.84,
+        "avg_qty": 6.455813953488372,
+        "profit_factor": 0.9548541953721379
+      },
+      "holdout": null
+    },
+    "pd_fade": {
+      "train": {
+        "trades": 489,
+        "wins": 180,
+        "win_rate": 0.36809815950920244,
+        "expectancy": -27.14529652351738,
+        "net": -13274.05,
+        "avg_win": 240.39377777777776,
+        "avg_loss": -182.99330097087378,
+        "max_dd": 13547.680000000011,
+        "worst_day": -199.85,
+        "best_day": 4427.83,
+        "avg_qty": 8.159509202453988,
+        "profit_factor": 0.7652477419284098
+      },
+      "validation": {
+        "trades": 173,
+        "wins": 71,
+        "win_rate": 0.41040462427745666,
+        "expectancy": -16.913121387283237,
+        "net": -2925.97,
+        "avg_win": 222.72436619718312,
+        "avg_loss": -183.71960784313723,
+        "max_dd": 4686.7,
+        "worst_day": -199.94,
+        "best_day": 850.12,
+        "avg_qty": 6.797687861271676,
+        "profit_factor": 0.8438599955174659
+      },
+      "holdout": null
+    },
+    "pd_break_1R": {
+      "train": {
+        "trades": 728,
+        "wins": 350,
+        "win_rate": 0.4807692307692308,
+        "expectancy": -15.25462912087912,
+        "net": -11105.369999999999,
+        "avg_win": 99.31757142857143,
+        "avg_loss": -121.33999999999999,
+        "max_dd": 11395.799999999974,
+        "worst_day": -199.88,
+        "best_day": 187.56,
+        "avg_qty": 3.35989010989011,
+        "profit_factor": 0.7578763333254845
+      },
+      "validation": {
+        "trades": 205,
+        "wins": 99,
+        "win_rate": 0.48292682926829267,
+        "expectancy": -15.599463414634144,
+        "net": -3197.8899999999994,
+        "avg_win": 102.68919191919191,
+        "avg_loss": -126.07660377358489,
+        "max_dd": 4175.639999999992,
+        "worst_day": -199.94,
+        "best_day": 185.06,
+        "avg_qty": 2.9853658536585366,
+        "profit_factor": 0.7607107688347605
+      },
+      "holdout": null
+    },
+    "pd_break_2R": {
+      "train": {
+        "trades": 728,
+        "wins": 312,
+        "win_rate": 0.42857142857142855,
+        "expectancy": -18.841510989010988,
+        "net": -13716.619999999999,
+        "avg_win": 122.37961538461539,
+        "avg_loss": -124.75735576923077,
+        "max_dd": 14097.049999999937,
+        "worst_day": -199.88,
+        "best_day": 360.12,
+        "avg_qty": 3.35989010989011,
+        "profit_factor": 0.7357058104713265
+      },
+      "validation": {
+        "trades": 205,
+        "wins": 87,
+        "win_rate": 0.424390243902439,
+        "expectancy": -11.672634146341462,
+        "net": -2392.89,
+        "avg_win": 142.26045977011495,
+        "avg_loss": -125.16567796610168,
+        "max_dd": 4668.509999999997,
+        "worst_day": -199.94,
+        "best_day": 375.06,
+        "avg_qty": 2.9853658536585366,
+        "profit_factor": 0.8379849081387043
+      },
+      "holdout": null
+    },
+    "on_reclaim_mid": {
+      "train": {
+        "trades": 777,
+        "wins": 241,
+        "win_rate": 0.31016731016731014,
+        "expectancy": -15.08057915057915,
+        "net": -11717.609999999999,
+        "avg_win": 363.8165145228216,
+        "avg_loss": -185.4428917910448,
+        "max_dd": 13982.520000000042,
+        "worst_day": -199.88,
+        "best_day": 2470.39,
+        "avg_qty": 8.092664092664092,
+        "profit_factor": 0.8821135041875848
+      },
+      "validation": {
+        "trades": 252,
+        "wins": 71,
+        "win_rate": 0.28174603174603174,
+        "expectancy": -55.26222222222221,
+        "net": -13926.079999999998,
+        "avg_win": 275.9287323943662,
+        "avg_loss": -185.17690607734804,
+        "max_dd": 14655.24,
+        "worst_day": -199.88,
+        "best_day": 885.12,
+        "avg_qty": 7.2976190476190474,
+        "profit_factor": 0.5845072145435364
+      },
+      "holdout": null
+    },
+    "on_reclaim_1.5R": {
+      "train": {
+        "trades": 782,
+        "wins": 293,
+        "win_rate": 0.37468030690537085,
+        "expectancy": -34.64310741687979,
+        "net": -27090.909999999996,
+        "avg_win": 214.8041638225256,
+        "avg_loss": -184.10742331288344,
+        "max_dd": 27090.909999999898,
+        "worst_day": -199.88,
+        "best_day": 285.06,
+        "avg_qty": 8.060102301790282,
+        "profit_factor": 0.6990852788554918
+      },
+      "validation": {
+        "trades": 254,
+        "wins": 104,
+        "win_rate": 0.4094488188976378,
+        "expectancy": -20.03295275590551,
+        "net": -5088.369999999999,
+        "avg_win": 214.81500000000003,
+        "avg_loss": -182.86086666666665,
+        "max_dd": 5689.179999999999,
+        "worst_day": -199.88,
+        "best_day": 273.84,
+        "avg_qty": 7.267716535433071,
+        "profit_factor": 0.814490288244651
+      },
+      "holdout": null
+    },
+    "fh_15bp_1.5R": {
+      "train": {
+        "trades": 715,
+        "wins": 333,
+        "win_rate": 0.46573426573426574,
+        "expectancy": 1.0700139860139875,
+        "net": 765.060000000001,
+        "avg_win": 152.84927927927927,
+        "avg_loss": -131.2401832460733,
+        "max_dd": 3997.6199999999994,
+        "worst_day": -199.97,
+        "best_day": 291.28,
+        "avg_qty": 1.9258741258741259,
+        "profit_factor": 1.0152603784875458
+      },
+      "validation": {
+        "trades": 171,
+        "wins": 88,
+        "win_rate": 0.5146198830409356,
+        "expectancy": 12.945380116959063,
+        "net": 2213.66,
+        "avg_win": 151.20806818181816,
+        "avg_loss": -133.64638554216867,
+        "max_dd": 1503.2300000000002,
+        "worst_day": -199.94,
+        "best_day": 277.56,
+        "avg_qty": 1.4444444444444444,
+        "profit_factor": 1.1995609705525732
+      },
+      "holdout": {
+        "trades": 135,
+        "wins": 73,
+        "win_rate": 0.5407407407407407,
+        "expectancy": 16.926444444444446,
+        "net": 2285.07,
+        "avg_win": 129.48945205479453,
+        "avg_loss": -115.60741935483871,
+        "max_dd": 1206.779999999997,
+        "worst_day": -197.47,
+        "best_day": 282.56,
+        "avg_qty": 1.2518518518518518,
+        "profit_factor": 1.3188027891948
+      }
+    },
+    "fh_15bp_time": {
+      "train": {
+        "trades": 715,
+        "wins": 321,
+        "win_rate": 0.4489510489510489,
+        "expectancy": 4.122461538461539,
+        "net": 2947.5600000000004,
+        "avg_win": 170.51158878504674,
+        "avg_loss": -131.4382233502538,
+        "max_dd": 4753.439999999998,
+        "worst_day": -199.97,
+        "best_day": 1095.09,
+        "avg_qty": 1.9258741258741259,
+        "profit_factor": 1.056917360571236
+      },
+      "validation": {
+        "trades": 171,
+        "wins": 83,
+        "win_rate": 0.4853801169590643,
+        "expectancy": 8.581345029239767,
+        "net": 1467.41,
+        "avg_win": 158.610843373494,
+        "avg_loss": -132.92374999999998,
+        "max_dd": 1579.48,
+        "worst_day": -199.94,
+        "best_day": 562.56,
+        "avg_qty": 1.4444444444444444,
+        "profit_factor": 1.125448715044254
+      },
+      "holdout": null
+    },
+    "fh_25bp_1.5R": {
+      "train": {
+        "trades": 489,
+        "wins": 229,
+        "win_rate": 0.46830265848670755,
+        "expectancy": 4.784171779141105,
+        "net": 2339.4600000000005,
+        "avg_win": 146.33847161572052,
+        "avg_loss": -119.8925,
+        "max_dd": 3574.630000000001,
+        "worst_day": -199.97,
+        "best_day": 291.28,
+        "avg_qty": 1.4969325153374233,
+        "profit_factor": 1.0750499245317522
+      },
+      "validation": {
+        "trades": 103,
+        "wins": 55,
+        "win_rate": 0.5339805825242718,
+        "expectancy": 7.45,
+        "net": 767.35,
+        "avg_win": 132.42181818181817,
+        "avg_loss": -135.74687500000002,
+        "max_dd": 1163.89,
+        "worst_day": -198.72,
+        "best_day": 277.56,
+        "avg_qty": 1.1650485436893203,
+        "profit_factor": 1.1177666766423413
+      },
+      "holdout": null
+    },
+    "fh_25bp_time": {
+      "train": {
+        "trades": 489,
+        "wins": 222,
+        "win_rate": 0.4539877300613497,
+        "expectancy": 6.586319018404908,
+        "net": 3220.71,
+        "avg_win": 158.315990990991,
+        "avg_loss": -119.57093632958801,
+        "max_dd": 3455.8800000000015,
+        "worst_day": -199.97,
+        "best_day": 703.78,
+        "avg_qty": 1.4969325153374233,
+        "profit_factor": 1.1008822431264849
+      },
+      "validation": {
+        "trades": 103,
+        "wins": 54,
+        "win_rate": 0.5242718446601942,
+        "expectancy": 12.983980582524271,
+        "net": 1337.35,
+        "avg_win": 145.47537037037037,
+        "avg_loss": -133.0269387755102,
+        "max_dd": 1015.1399999999999,
+        "worst_day": -198.72,
+        "best_day": 503.78,
+        "avg_qty": 1.1650485436893203,
+        "profit_factor": 1.205167896022288
+      },
+      "holdout": null
+    },
+    "late_1R": {
+      "train": {
+        "trades": 888,
+        "wins": 434,
+        "win_rate": 0.48873873873873874,
+        "expectancy": -31.191216216216212,
+        "net": -27697.799999999996,
+        "avg_win": 132.17880184331798,
+        "avg_loss": -187.36431718061672,
+        "max_dd": 28072.539999999888,
+        "worst_day": -199.85,
+        "best_day": 176.34,
+        "avg_qty": 9.138513513513514,
+        "profit_factor": 0.6743863988507397
+      },
+      "validation": {
+        "trades": 288,
+        "wins": 140,
+        "win_rate": 0.4861111111111111,
+        "expectancy": -26.42604166666666,
+        "net": -7610.699999999998,
+        "avg_win": 140.49585714285715,
+        "avg_loss": -184.32513513513513,
+        "max_dd": 8719.240000000002,
+        "worst_day": -199.88,
+        "best_day": 172.59,
+        "avg_qty": 6.71875,
+        "profit_factor": 0.7210166230940334
+      },
+      "holdout": null
+    },
+    "late_time": {
+      "train": {
+        "trades": 888,
+        "wins": 233,
+        "win_rate": 0.26238738738738737,
+        "expectancy": -8.833389639639638,
+        "net": -7844.049999999997,
+        "avg_win": 488.72416309012874,
+        "avg_loss": -185.82714503816794,
+        "max_dd": 19893.600000000028,
+        "worst_day": -199.88,
+        "best_day": 4005.36,
+        "avg_qty": 9.138513513513514,
+        "profit_factor": 0.9355549004829079
+      },
+      "validation": {
+        "trades": 288,
+        "wins": 60,
+        "win_rate": 0.20833333333333334,
+        "expectancy": -53.81319444444444,
+        "net": -15498.199999999999,
+        "avg_win": 423.903,
+        "avg_loss": -179.52798245614034,
+        "max_dd": 16130.379999999992,
+        "worst_day": -199.88,
+        "best_day": 1492.68,
+        "avg_qty": 6.71875,
+        "profit_factor": 0.6213706605870463
+      },
+      "holdout": null
+    },
+    "tod_0830_0930_long": {
+      "train": {
+        "trades": 1200,
+        "wins": 368,
+        "win_rate": 0.30666666666666664,
+        "expectancy": -15.258774999999996,
+        "net": -18310.529999999995,
+        "avg_win": 354.478097826087,
+        "avg_loss": -178.79623798076923,
+        "max_dd": 22873.99999999986,
+        "worst_day": -1084.88,
+        "best_day": 1800.18,
+        "avg_qty": 6.4783333333333335,
+        "profit_factor": 0.8769110088319677
+      },
+      "validation": {
+        "trades": 382,
+        "wins": 98,
+        "win_rate": 0.25654450261780104,
+        "expectancy": -46.98261780104712,
+        "net": -17947.36,
+        "avg_win": 322.46530612244896,
+        "avg_loss": -174.4681690140845,
+        "max_dd": 19360.179999999997,
+        "worst_day": -199.94,
+        "best_day": 1090.24,
+        "avg_qty": 5.138743455497382,
+        "profit_factor": 0.6377853339404096
+      },
+      "holdout": null
+    },
+    "tod_0830_0930_short": {
+      "train": {
+        "trades": 1200,
+        "wins": 321,
+        "win_rate": 0.2675,
+        "expectancy": -29.662941666666665,
+        "net": -35595.53,
+        "avg_win": 369.0742679127726,
+        "avg_loss": -175.27687144482366,
+        "max_dd": 35595.52999999983,
+        "worst_day": -199.94,
+        "best_day": 1620.48,
+        "avg_qty": 6.4783333333333335,
+        "profit_factor": 0.7689627663354912
+      },
+      "validation": {
+        "trades": 382,
+        "wins": 107,
+        "win_rate": 0.2801047120418848,
+        "expectancy": -13.245706806282719,
+        "net": -5059.859999999999,
+        "avg_win": 390.78728971962613,
+        "avg_loss": -170.4512727272727,
+        "max_dd": 7586.360000000001,
+        "worst_day": -199.88,
+        "best_day": 2091.46,
+        "avg_qty": 5.138743455497382,
+        "profit_factor": 0.8920542474415508
+      },
+      "holdout": null
+    },
+    "tod_0930_1030_long": {
+      "train": {
+        "trades": 1199,
+        "wins": 561,
+        "win_rate": 0.46788990825688076,
+        "expectancy": -13.60177648040033,
+        "net": -16308.529999999997,
+        "avg_win": 124.59825311942959,
+        "avg_loss": -135.12249216300938,
+        "max_dd": 17218.279999999962,
+        "worst_day": -199.94,
+        "best_day": 568.9,
+        "avg_qty": 4.002502085070892,
+        "profit_factor": 0.8108238026219099
+      },
+      "validation": {
+        "trades": 379,
+        "wins": 176,
+        "win_rate": 0.46437994722955145,
+        "expectancy": -15.198707124010554,
+        "net": -5760.3099999999995,
+        "avg_win": 121.92312500000001,
+        "avg_loss": -134.08266009852215,
+        "max_dd": 7089.639999999996,
+        "worst_day": -199.88,
+        "best_day": 675.27,
+        "avg_qty": 3.1609498680738786,
+        "profit_factor": 0.7883700151145644
+      },
+      "holdout": null
+    },
+    "tod_0930_1030_short": {
+      "train": {
+        "trades": 1199,
+        "wins": 501,
+        "win_rate": 0.4178482068390325,
+        "expectancy": -14.99043369474562,
+        "net": -17973.53,
+        "avg_win": 143.9008383233533,
+        "avg_loss": -129.03703438395414,
+        "max_dd": 19583.679999999924,
+        "worst_day": -199.94,
+        "best_day": 1090.24,
+        "avg_qty": 4.002502085070892,
+        "profit_factor": 0.8004445537447603
+      },
+      "validation": {
+        "trades": 379,
+        "wins": 160,
+        "win_rate": 0.42216358839050133,
+        "expectancy": -16.280501319261212,
+        "net": -6170.3099999999995,
+        "avg_win": 130.4106875,
+        "avg_loss": -123.45214611872146,
+        "max_dd": 6364.369999999991,
+        "worst_day": -199.94,
+        "best_day": 768.9,
+        "avg_qty": 3.1609498680738786,
+        "profit_factor": 0.7717744697629311
+      },
+      "holdout": null
+    },
+    "tod_1000_1130_long": {
+      "train": {
+        "trades": 1199,
+        "wins": 561,
+        "win_rate": 0.46788990825688076,
+        "expectancy": -12.03250208507089,
+        "net": -14426.969999999998,
+        "avg_win": 133.81073083778966,
+        "avg_loss": -140.27396551724138,
+        "max_dd": 17168.95000000001,
+        "worst_day": -199.94,
+        "best_day": 630.24,
+        "avg_qty": 3.9416180150125104,
+        "profit_factor": 0.8387954203814547
+      },
+      "validation": {
+        "trades": 379,
+        "wins": 162,
+        "win_rate": 0.42744063324538256,
+        "expectancy": -15.962480211081793,
+        "net": -6049.78,
+        "avg_win": 147.66222222222223,
+        "avg_loss": -138.11548387096772,
+        "max_dd": 7873.2299999999905,
+        "worst_day": -199.94,
+        "best_day": 612.65,
+        "avg_qty": 3.0976253298153034,
+        "profit_factor": 0.7981459447880722
+      },
+      "holdout": null
+    },
+    "tod_1000_1130_short": {
+      "train": {
+        "trades": 1199,
+        "wins": 496,
+        "win_rate": 0.41367806505421184,
+        "expectancy": -18.063569641367806,
+        "net": -21658.219999999998,
+        "avg_win": 146.6184072580645,
+        "avg_loss": -134.25455192034138,
+        "max_dd": 22584.659999999996,
+        "worst_day": -199.94,
+        "best_day": 1350.24,
+        "avg_qty": 3.9416180150125104,
+        "profit_factor": 0.7705233948164327
+      },
+      "validation": {
+        "trades": 379,
+        "wins": 156,
+        "win_rate": 0.41160949868073876,
+        "expectancy": -16.849683377308708,
+        "net": -6386.03,
+        "avg_win": 141.47602564102564,
+        "avg_loss": -127.60668161434978,
+        "max_dd": 6484.6299999999965,
+        "worst_day": -199.94,
+        "best_day": 460.12,
+        "avg_qty": 3.0976253298153034,
+        "profit_factor": 0.7755845895582312
+      },
+      "holdout": null
+    },
+    "tod_1330_1500_long": {
+      "train": {
+        "trades": 1161,
+        "wins": 463,
+        "win_rate": 0.3987941429801895,
+        "expectancy": -11.680620155038758,
+        "net": -13561.199999999997,
+        "avg_win": 214.5476889848812,
+        "avg_loss": -161.74323782234956,
+        "max_dd": 18543.83,
+        "worst_day": -199.94,
+        "best_day": 1050.3,
+        "avg_qty": 4.9181739879414295,
+        "profit_factor": 0.8798796564437001
+      },
+      "validation": {
+        "trades": 366,
+        "wins": 159,
+        "win_rate": 0.4344262295081967,
+        "expectancy": -8.345765027322402,
+        "net": -3054.5499999999993,
+        "avg_win": 181.88050314465409,
+        "avg_loss": -154.46159420289854,
+        "max_dd": 5046.4000000000015,
+        "worst_day": -199.88,
+        "best_day": 1320.12,
+        "avg_qty": 3.4562841530054644,
+        "profit_factor": 0.9044663479657404
+      },
+      "holdout": null
+    },
+    "tod_1330_1500_short": {
+      "train": {
+        "trades": 1161,
+        "wins": 417,
+        "win_rate": 0.35917312661498707,
+        "expectancy": -17.24586563307493,
+        "net": -20022.449999999997,
+        "avg_win": 238.5429736211031,
+        "avg_loss": -160.61138440860213,
+        "max_dd": 23175.18999999989,
+        "worst_day": -199.94,
+        "best_day": 2336.46,
+        "avg_qty": 4.9181739879414295,
+        "profit_factor": 0.8324409240329731
+      },
+      "validation": {
+        "trades": 366,
+        "wins": 137,
+        "win_rate": 0.3743169398907104,
+        "expectancy": -22.83005464480874,
+        "net": -8355.8,
+        "avg_win": 184.0434306569343,
+        "avg_loss": -146.59279475982532,
+        "max_dd": 8793.80999999999,
+        "worst_day": -199.88,
+        "best_day": 1397.56,
+        "avg_qty": 3.4562841530054644,
+        "profit_factor": 0.7510913843564518
+      },
+      "holdout": null
+    },
+    "tod_1400_1500_long": {
+      "train": {
+        "trades": 1156,
+        "wins": 443,
+        "win_rate": 0.38321799307958476,
+        "expectancy": -26.773235294117644,
+        "net": -30949.859999999997,
+        "avg_win": 177.64735891647857,
+        "avg_loss": -153.78350631136044,
+        "max_dd": 31123.47999999977,
+        "worst_day": -199.94,
+        "best_day": 887.8,
+        "avg_qty": 4.942041522491349,
+        "profit_factor": 0.7177334596531215
+      },
+      "validation": {
+        "trades": 367,
+        "wins": 158,
+        "win_rate": 0.4305177111716621,
+        "expectancy": -8.877138964577655,
+        "net": -3257.9099999999994,
+        "avg_win": 165.7710759493671,
+        "avg_loss": -140.90784688995214,
+        "max_dd": 5546.1,
+        "worst_day": -199.88,
+        "best_day": 1185.12,
+        "avg_qty": 3.482288828337875,
+        "profit_factor": 0.8893738960004401
+      },
+      "holdout": null
+    },
+    "tod_1400_1500_short": {
+      "train": {
+        "trades": 1156,
+        "wins": 474,
+        "win_rate": 0.4100346020761246,
+        "expectancy": -8.965060553633215,
+        "net": -10363.609999999997,
+        "avg_win": 192.45556962025316,
+        "avg_loss": -148.95535190615837,
+        "max_dd": 11430.599999999962,
+        "worst_day": -199.94,
+        "best_day": 1043.9,
+        "avg_qty": 4.942041522491349,
+        "profit_factor": 0.8979834635248118
+      },
+      "validation": {
+        "trades": 367,
+        "wins": 154,
+        "win_rate": 0.4196185286103542,
+        "expectancy": -13.669373297002725,
+        "net": -5016.66,
+        "avg_win": 158.19655844155844,
+        "avg_loss": -137.9292488262911,
+        "max_dd": 7122.250000000002,
+        "worst_day": -199.88,
+        "best_day": 820.24,
+        "avg_qty": 3.482288828337875,
+        "profit_factor": 0.8292429302224418
+      },
+      "holdout": null
+    },
+    "trend_vwap_ema": {
+      "train": {
+        "trades": 1203,
+        "wins": 400,
+        "win_rate": 0.3325020781379884,
+        "expectancy": -30.77516209476309,
+        "net": -37022.52,
+        "avg_win": 282.282025,
+        "avg_loss": -186.71896637608964,
+        "max_dd": 37971.7499999999,
+        "worst_day": -199.88,
+        "best_day": 360.12,
+        "avg_qty": 8.450540315876975,
+        "profit_factor": 0.7530767431531982
+      },
+      "validation": {
+        "trades": 385,
+        "wins": 138,
+        "win_rate": 0.35844155844155845,
+        "expectancy": -10.415999999999999,
+        "net": -4010.1599999999994,
+        "avg_win": 301.3252173913043,
+        "avg_loss": -184.5872064777328,
+        "max_dd": 6579.409999999999,
+        "worst_day": -199.88,
+        "best_day": 371.34,
+        "avg_qty": 7.020779220779221,
+        "profit_factor": 0.9120444699454127
+      },
+      "holdout": null
+    },
+    "bench_bh": {
+      "train": {
+        "trades": 1203,
+        "wins": 650,
+        "win_rate": 0.5403158769742311,
+        "expectancy": 0.34795511221944875,
+        "net": 418.58999999999685,
+        "avg_win": 116.74538461538461,
+        "avg_loss": -136.46638336347198,
+        "max_dd": 4160.530000000013,
+        "worst_day": -712.47,
+        "best_day": 862.53,
+        "avg_qty": 1.0,
+        "profit_factor": 1.0055467428935794
+      },
+      "validation": {
+        "trades": 385,
+        "wins": 204,
+        "win_rate": 0.5298701298701298,
+        "expectancy": 2.120909090909088,
+        "net": 816.5499999999989,
+        "avg_win": 146.15132352941177,
+        "avg_loss": -160.21171270718233,
+        "max_dd": 4725.650000000003,
+        "worst_day": -1276.22,
+        "best_day": 2530.03,
+        "avg_qty": 1.0,
+        "profit_factor": 1.0281585278043692
+      },
+      "holdout": null
+    },
+    "bench_bh_stop": {
+      "train": {
+        "trades": 1203,
+        "wins": 510,
+        "win_rate": 0.4239401496259352,
+        "expectancy": -3.227481296758105,
+        "net": -3882.6600000000003,
+        "avg_win": 112.75303921568627,
+        "avg_loss": -88.58111111111111,
+        "max_dd": 7001.4399999999505,
+        "worst_day": -271.22,
+        "best_day": 862.53,
+        "avg_qty": 1.0,
+        "profit_factor": 0.9367508048566212
+      },
+      "validation": {
+        "trades": 385,
+        "wins": 150,
+        "win_rate": 0.38961038961038963,
+        "expectancy": -1.0414285714285707,
+        "net": -400.94999999999976,
+        "avg_win": 145.23833333333334,
+        "avg_loss": -94.41148936170212,
+        "max_dd": 4374.099999999999,
+        "worst_day": -103.72,
+        "best_day": 2530.03,
+        "avg_qty": 1.0,
+        "profit_factor": 0.9819283624874361
+      },
+      "holdout": null
+    },
+    "bench_random": {
+      "train": {
+        "trades": 1203,
+        "wins": 610,
+        "win_rate": 0.5070656691604323,
+        "expectancy": -7.36545303408146,
+        "net": -8860.639999999996,
+        "avg_win": 134.947868852459,
+        "avg_loss": -153.7585834738617,
+        "max_dd": 11538.71999999985,
+        "worst_day": -174.88,
+        "best_day": 150.12,
+        "avg_qty": 4.0,
+        "profit_factor": 0.902821312488731
+      },
+      "validation": {
+        "trades": 385,
+        "wins": 189,
+        "win_rate": 0.4909090909090909,
+        "expectancy": -13.81506493506493,
+        "net": -5318.799999999998,
+        "avg_win": 143.29460317460317,
+        "avg_loss": -165.31367346938777,
+        "max_dd": 6471.000000000032,
+        "worst_day": -174.88,
+        "best_day": 150.12,
+        "avg_qty": 4.0,
+        "profit_factor": 0.8358470045195466
+      },
+      "holdout": null
+    }
+  },
+  "profile_highlight": {
+    "median_of_median_range": 10.0,
+    "widest": "08:30",
+    "widest_range": 16.75,
+    "quietest": "12:30",
+    "quietest_range": 9.0,
+    "momentum": "14:00",
+    "momentum_vr": 1.518919419726372,
+    "fade": "10:00",
+    "fade_vr": 0.8517692087398677
+  },
+  "profile_gap": {
+    "n": 1879,
+    "mean": 1.6552687599787121,
+    "median": 2.75,
+    "up_n": 1029,
+    "up_next_mean": -0.03668610301263363,
+    "up_continuation": 0.5043731778425656,
+    "down_n": 839,
+    "down_next_mean": 0.8367103694874851,
+    "down_continuation": 0.4469606674612634
+  },
+  "profile_regimes": {
+    "2020 covid": {
+      "n": 106,
+      "rth_mean": -0.14150943396226415,
+      "first_hour_abs_median": 12.25,
+      "open_bucket_range_median": 21.75
+    },
+    "2022 bear": {
+      "n": 258,
+      "rth_mean": -0.8953488372093024,
+      "first_hour_abs_median": 15.375,
+      "open_bucket_range_median": 27.0
+    },
+    "2023-2026": {
+      "n": 966,
+      "rth_mean": 1.3103002070393375,
+      "first_hour_abs_median": 10.75,
+      "open_bucket_range_median": 17.75
+    },
+    "all": {
+      "n": 1912,
+      "rth_mean": 0.7832112970711297,
+      "first_hour_abs_median": 10.0,
+      "open_bucket_range_median": 16.75
+    }
+  },
+  "rth_mean": 0.7832112970711297,
+  "pooled_variance_ratio": 0.9956020250278685,
+  "pooled_autocorr": 0.007632205408648063
+}

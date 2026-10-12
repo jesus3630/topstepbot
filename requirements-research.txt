@@ -1,0 +1,3 @@
+# Extra packages for python -m research.run. The live bot does not import these.
+numpy>=2.0
+matplotlib>=3.8
