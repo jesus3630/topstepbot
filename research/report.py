@@ -169,14 +169,25 @@ def _cost_paragraph(inst) -> str:
         )
     slip = inst.tick_value
     all_in = inst.fee_round_turn + 2 * slip
+    if inst.code == "MNQ":
+        return (
+            f"TopstepX lists the Micro E-mini Nasdaq-100 round turn at **${inst.fee_round_turn:.2f}**, "
+            f"read from {FEE_SOURCE} on 2026-10-10. The page shows that total beside MES and does not print a separate "
+            "commission, exchange, and NFA split for MNQ. "
+            "The October 2026 CME increase on that page is MCL and MNG, not MNQ. "
+            "A market or stop order also pays 1 tick against the trader on the way in and, if it exits by stop or by a flatten, 1 tick on the way out. "
+            f"That is **${all_in:.2f}** all-in for a market round turn on one {inst.code} "
+            f"(the fee plus two ticks at ${slip:.2f}). A limit that is filled only when price trades through it pays no entry slippage. "
+            "The live config still says $1.40. This study does not edit that file."
+        )
     return (
-        f"TopstepX lists the Micro E-mini Nasdaq-100 round turn at **${inst.fee_round_turn:.2f}**, "
-        f"read from {FEE_SOURCE} on 2026-10-10. The page shows that total beside MES and does not print a separate "
-        "commission, exchange, and NFA split for MNQ. "
-        "The October 2026 CME increase on that page is MCL and MNG, not MNQ. "
+        f"TopstepX lists the Micro E-mini Russell 2000 round turn at **${inst.fee_round_turn:.2f}**, "
+        f"read from {FEE_SOURCE} on 2026-10-12. The page shows that total beside MES and does not print a separate "
+        "commission, exchange, and NFA split for M2K. "
+        "The October 2026 CME increase on that page is MCL and MNG, not M2K. "
+        f"M2K is a 0.10-point tick worth ${slip:.2f}, and one point is ${inst.point_value:.2f}. "
         "A market or stop order also pays 1 tick against the trader on the way in and, if it exits by stop or by a flatten, 1 tick on the way out. "
-        f"That is **${all_in:.2f}** all-in for a market round turn on one {inst.code} "
-        f"(the fee plus two ticks at ${slip:.2f}). A limit that is filled only when price trades through it pays no entry slippage. "
+        f"That is **${all_in:.2f}** all-in for a market round turn on one M2K. A limit that is filled only when price trades through it pays no entry slippage. "
         "The live config still says $1.40. This study does not edit that file."
     )
 
@@ -184,10 +195,12 @@ def _cost_paragraph(inst) -> str:
 def _account_paragraph(inst) -> str:
     if inst.code == "MES":
         other = (
-            "MNQ and M2K were not tested. There is no second data file, and adding one would not have been a small side check."
+            "MNQ and M2K are scored in later sections of the research note. This MES run does not include their trades."
         )
+    elif inst.code == "MNQ":
+        other = "This run prices MNQ. M2K was not tested."
     else:
-        other = f"This run prices {inst.code}. M2K was not tested."
+        other = "This run prices M2K."
     return (
         "The account rules used here are the 50K Combine: $3,000 profit target, $1,000 daily loss limit, "
         f"$2,000 end-of-day trailing max loss, at most 50 {inst.code}, and flat by 3:10 PM CT. "

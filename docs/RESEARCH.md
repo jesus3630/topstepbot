@@ -8,7 +8,7 @@ This is a research note, not a recommendation to place a live order and not fina
 
 TopstepX lists the Micro E-mini S&P 500 round turn at **$1.22** ($0.50 commission, $0.70 exchange, $0.02 NFA), read from https://help.topstep.com/en/articles/8284213-topstepx-commissions-and-fees on 2026-10-10. The October 2026 CME increase on that page is MCL and MNG, not MES. A market or stop order also pays 1 tick against the trader on the way in and, if it exits by stop or by a flatten, 1 tick on the way out. That is **$3.72** all-in for a market round turn on one MES. A limit that is filled only when price trades through it pays no entry slippage. The live config still says $1.40. This study does not edit that file.
 
-The account rules used here are the 50K Combine: $3,000 profit target, $1,000 daily loss limit, $2,000 end-of-day trailing max loss, at most 50 MES, and flat by 3:10 PM CT. Passing also requires the best day to be under half of the profits. The later payout path uses 40% instead of 50%; that stricter test is reported beside the Combine result, and it is not what decides a pass. Size in this study risks $200 a trade, skips the trade if one contract cannot fit, takes at most two trades a day, and stops opening new trades once the day is down $400. MNQ was scored later, on its own file, with the same rule list and MNQ's own dollars. M2K was not tested.
+The account rules used here are the 50K Combine: $3,000 profit target, $1,000 daily loss limit, $2,000 end-of-day trailing max loss, at most 50 MES, and flat by 3:10 PM CT. Passing also requires the best day to be under half of the profits. The later payout path uses 40% instead of 50%; that stricter test is reported beside the Combine result, and it is not what decides a pass. Size in this study risks $200 a trade, skips the trade if one contract cannot fit, takes at most two trades a day, and stops opening new trades once the day is down $400. MNQ and M2K were scored later, on their own files, with the same rule list and each contract's own dollars.
 
 ## The rules were written down first
 
@@ -528,7 +528,109 @@ The one supported filter, skipping red days on MES first-hour momentum, raised t
 
 ## Recommendation after MNQ, correlation, and events
 
-Do not change the live bot. Do not switch to first-hour momentum on MES or on MNQ. Do not trade the three MNQ finalists. Do not require the other index to confirm. Do not fade an ES/NQ divergence or the NQ/ES ratio. Do not skip NFP, CPI, or FOMC days. Adjusted p-values for the three MNQ finalists are 1.000. The two cross rules that qualified have adjusted p-values of 0.85 and 0.77. The fade and the ratio rule did not qualify. The only event filter that cleared its own train and validation gate failed the holdout, and it made the Combine holdout worse. Positive dollars with an adjusted p-value of 1 are not an edge. M2K was not tested. Leave the live settings where they are.
+Do not change the live bot. Do not switch to first-hour momentum on MES or on MNQ. Do not trade the three MNQ finalists. Do not require the other index to confirm. Do not fade an ES/NQ divergence or the NQ/ES ratio. Do not skip NFP, CPI, or FOMC days. Adjusted p-values for the three MNQ finalists are 1.000. The two cross rules that qualified have adjusted p-values of 0.85 and 0.77. The fade and the ratio rule did not qualify. The only event filter that cleared its own train and validation gate failed the holdout, and it made the Combine holdout worse. Positive dollars with an adjusted p-value of 1 are not an edge. The M2K screen, the Russell and yield checks, and the Sunday reopen are below. They do not change this.
+
+## M2K, same 63 rules
+
+The file is Databento `M2K.v.0`, 2,474,367 one-minute bars, 1,912 cash sessions, 30 rolls, 31 contracts, 2019-05-06 through 2026-09-30. The splits are the same dates as MES and MNQ. CME's micro Russell is a 0.10-point tick and $5 a point, so a tick is $0.50. TopstepX lists the Micro E-mini Russell 2000 round turn at **$1.22**, read on 2026-10-12 from the same commissions page, in the row next to MES. That page does not print a separate commission, exchange, and NFA split for M2K. A market round turn is $2.22 all-in. The October 2026 CME increase on that page is still MCL and MNG. The live config still says $1.40 and still trades MES.
+
+No rule cleared the gates. Of the 63 eligible configurations, none stayed positive after costs on both train and validation. The holdout was not opened. There is no finalist, no adjusted p-value, and no Combine simulation, because those steps run only after a rule has already qualified.
+
+Six configurations made money in train. All six lost money in validation.
+
+| rule | train n | train $/trade | train net | val n | val $/trade | val net |
+|---|---:|---:|---:|---:|---:|---:|
+| fh_15bp_1.5R | 977 | $2.07 | $2,022 | 296 | −$4.63 | −$1,371 |
+| fh_15bp_time | 977 | $1.74 | $1,705 | 296 | −$2.08 | −$616 |
+| fh_25bp_1.5R | 842 | $4.42 | $3,719 | 246 | −$11.40 | −$2,805 |
+| fh_25bp_time | 842 | $5.32 | $4,481 | 246 | −$2.86 | −$705 |
+| gap_go_25bp | 810 | $2.70 | $2,189 | 253 | −$21.79 | −$5,513 |
+| tod_0830_0930_short | 1202 | $2.14 | $2,569 | 385 | −$16.26 | −$6,262 |
+
+First-hour momentum, which was the MES finalist and an MNQ finalist, made about $2 a trade in the M2K train window and lost money in validation. The best validation number in the whole menu is `gap_fade_25bp`, at $10.49 a trade (253 trades, net $2,655). The same rule lost $17.02 a trade in train (810 trades, net −$13,784). A rule that loses for four years and then makes money is not a pass.
+
+The 8-point random null lost about $9.05 a trade in train and $8.77 in validation. All 100 seeds were negative. On M2K the median half hour is 6.5 points and the 8:30 half hour is 15.5, so an 8-point stop is a real stop, not the noise it was on MNQ. The null still loses to costs. Nothing in the menu beat both windows. The cash session itself averaged −0.40 points a day, about −$2 on one M2K. The open is still the wide half hour. Every row is in `docs/research/m2k_results.json`.
+
+![M2K median range by half hour](research/m2k_time_of_day.png)
+
+![Rejected M2K rule with the highest validation expectancy. Train lost money. No holdout.](research/m2k_equity.png)
+
+## What Russell, VIX, and yields add
+
+M2K lines up with MES and MNQ on all 1,912 cash sessions. One M2K is the quiet micro. The standard deviation of the daily cash-session point change is 23.4 points, which is $117 on one M2K, against $198 on one MES and $367 on one MNQ.
+
+| pair | daily | 30-minute | 5-minute | 1-minute |
+|---|---:|---:|---:|---:|
+| M2K vs MES | 0.814 | 0.822 | 0.812 | 0.791 |
+| M2K vs MNQ | 0.716 | 0.721 | 0.727 | 0.716 |
+
+They move together, and less tightly than ES and NQ (daily correlation 0.929 in the earlier section). The loose part of the day is the open. M2K versus MES is 0.701 in the 8:30 half hour and 0.861 at 13:30. M2K versus MNQ is 0.551 at the open and 0.826 at 13:30. Russell and Nasdaq are the pair that actually diverges, and they diverge at the cash open. By early afternoon they are back in line.
+
+![MES and M2K correlation by half hour](research/m2k_es_corr_by_time.png)
+
+![MNQ and M2K correlation by half hour](research/m2k_nq_corr_by_time.png)
+
+Lead-lag is the correlation of the MES (or MNQ) return ending at minute t with the M2K return ending at t+k. A positive lag is M2K's later minute. Lag 0 is 0.791 against MES and 0.716 against MNQ. Lag +1 is 0.028 in both pairs. Lag −1 is 0.010 against MES and 0.013 against MNQ. Russell does not lead either index by a minute. The other index is a hair earlier, and a hair of 0.03 correlation is not a trade.
+
+![1-minute lead-lag of M2K against MES](research/m2k_es_lead_lag.png)
+
+Four predictors were written down before they were scored. They are not part of the 63 and not part of the Sunday menu. N would have been 4. None of them made money in train, so none was a candidate, none was held out, and none has a p-value. The associations below are descriptive. They are not a second menu.
+
+| question | full-sample correlation | the traded rule | train $/trade | val $/trade |
+|---|---:|---|---:|---:|
+| M2K overnight outperformance vs the MES first hour | 0.050 | buy or sell MES at 8:30 in that direction, 15bp stop, flat 9:30 | −$11.61 (638) | −$16.03 (282) |
+| Prior-day VIX change vs the MES first hour | −0.013 | MES first-hour momentum only if VIX rose at least 1 point | −$12.08 (142) | −$24.70 (24) |
+| Prior-day 10-year yield change vs the MNQ first hour | 0.016 | buy MNQ if yields fell 5bp, sell if they rose 5bp, flat 9:30 | −$6.70 (431) | −$10.08 (132) |
+| M2K/MES first-hour divergence, fade MES | — | opposite signs, each at least 15bp, fade MES | −$85.66 (75) | $54.22 (24) |
+
+The divergence fade's validation profit is 24 trades after a train loss of $86 a trade. It failed the train gate. It was not held out.
+
+What actually matters is the ordinary comovement. Russell spends the cash day moving with the S&P, more loosely with the Nasdaq, and the open is the loose hour. That fact did not turn into a first-hour forecast. Yesterday's VIX change and yesterday's yield change are close to uncorrelated with the next first hour.
+
+The yield series is the Treasury daily par yield curve, 10-year column, retrieved 2026-10-12 from home.treasury.gov. That is the series FRED publishes as DGS10. FRED returned HTTP 500. The rule uses the change between the two prints already published before the session. Today's yield is not in the signal. VIX is the Cboe daily close already used in the event section. The Cboe VIX-futures history file returned HTTP 403, so there is no intraday VX filter. No Databento key is present in this environment, so `metadata.get_cost` was not called and no ZN file was downloaded. A ZN 1-minute pull still needs that quote on the machine that holds the key before anyone spends the remaining credit.
+
+## Sunday evening reopen
+
+Topstep's hours page, read 2026-10-12, opens trading at 5:00 PM CT on Sunday and requires the book to be flat by 3:10 PM CT each weekday. Friday stays closed until that Sunday open. The page does not print the sentence "Sunday P&L counts as Monday." The window that starts Sunday at 5:00 PM CT ends Monday at 3:10 PM CT, and the CME trade date for that window is Monday. This study puts each Sunday evening on that Monday for the split. The four rules flatten earlier than the Topstep deadline: the gap rules at Monday 8:30 CT, and the evening rules at 21:00 CT Sunday.
+
+Each market has 383 Sunday reopens in the file. One, the first Sunday, has no Friday close yet. None of the other weekends changed the contract string between Friday's cash close and the Sunday print, so no gap trade was dropped for a roll. Gaps smaller than 4 ticks were not traded and are not in the fill rates.
+
+The typical weekend gap is small. The median absolute gap is 5.75 points on MES (0.13%), 17.6 points on MNQ (0.13%), and 3.0 points on M2K (0.15%). The median signed gap is about a point. The mean is negative because the left tail is fat: the 10th percentile on MES is −25 points.
+
+| market | filled within 1 hour | 2 hours | 4 hours | by Monday 8:30 |
+|---|---:|---:|---:|---:|
+| MES | 37% of 343 | 43% | 49% | 65% |
+| MNQ | 46% of 364 | 51% | 58% | 71% |
+| M2K | 45% of 349 | 49% | 55% | 71% |
+
+About half of the gaps that are large enough to trade have not touched Friday's close four hours after the reopen. About two thirds have touched it by the cash open. That is a slow fill, not a reliable evening trade. The extensions are what a fade has to survive.
+
+Sunday's first hour is busier than a normal weekday evening and much quieter than the cash open. Median MES volume from 17:00 to 18:00 CT is 13,157 on Sunday and 6,718 on Monday–Thursday evening, against 189,780 in the cash first hour. The Sunday first-hour median range is 13 points on MES, 56 on MNQ, and 8.5 on M2K, about half the cash first hour (23, 122, and 19.6).
+
+![Sunday gap versus Friday's cash close](research/sunday_gap.png)
+
+Four rules, three markets, N = 12 if any of them had qualified. None made money in both train and validation. The holdout was not opened.
+
+| rule | market | train n | train $/trade | val n | val $/trade |
+|---|---|---:|---:|---:|---:|
+| sun_gap_fade | MES | 174 | −$53.05 | 53 | −$28.98 |
+| sun_gap_fade | MNQ | 181 | −$44.17 | 50 | $9.84 |
+| sun_gap_fade | M2K | 167 | −$40.07 | 59 | −$50.41 |
+| sun_gap_go | MES | 170 | −$10.60 | 52 | −$13.19 |
+| sun_gap_go | MNQ | 175 | −$4.69 | 50 | −$1.89 |
+| sun_gap_go | M2K | 163 | −$30.37 | 58 | $22.94 |
+| sun_orb30 | MES | 197 | −$1.91 | 64 | −$20.70 |
+| sun_orb30 | MNQ | 188 | $5.35 | 58 | −$11.76 |
+| sun_orb30 | M2K | 197 | −$3.54 | 65 | −$15.88 |
+| sun_fade_hour | MES | 107 | −$66.99 | 35 | −$70.81 |
+| sun_fade_hour | MNQ | 113 | −$52.13 | 38 | −$52.63 |
+| sun_fade_hour | M2K | 106 | −$20.82 | 33 | −$24.20 |
+
+The two cells that made money in validation, MNQ's gap fade and M2K's gap continuation, lost money in train. MNQ's 30-minute Sunday breakout made $5.35 a trade in train and lost $11.76 in validation. Fading the first-hour extreme lost about $20 to $70 a trade in every window that was scored. A high win rate does show up on the continuation rule (MES train 58%, M2K validation 69%) and the expectancy is still negative where the train gate applies, because the losses are larger than the wins once the fee and the slippage are in. These four rules do not support the idea that the Sunday reopen is a profitable trade for this account. A different Sunday method was not tested after seeing this.
+
+## Recommendation after M2K, the predictors, and Sunday
+
+Do not change the live bot. Do not add M2K. Do not filter MES or MNQ with Russell, with the prior VIX change, or with the prior day's yield change. Do not trade the Sunday reopen with a gap fade, a gap continuation, a 30-minute breakout, or a fade of the first-hour extreme. The M2K menu produced no finalist, so its holdout stayed shut. The four predictors and the twelve Sunday books failed the money gate before a p-value was computed. Leave the live settings where they are.
 
 ## What this study did not change
 

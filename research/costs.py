@@ -12,8 +12,12 @@ The live bot's $1.40 placeholder in config/settings.yaml is intentionally
 left alone.
 
 MES is $1.25 a tick ($5 a point). MNQ is $0.50 a tick ($2 a point). Both
-ticks are 0.25 points. ``python -m research.run --instrument MNQ`` prices
-the same rules with the MNQ spec. The default remains MES.
+ticks are 0.25 points. M2K is a 0.10 tick and $5 a point, so a tick is
+also $0.50. The same TopstepX page lists Micro E-mini Russell 2000 (M2K)
+at a $1.22 round-turn total, next to MES. It does not print a separate
+commission, exchange, and NFA split for M2K. ``python -m research.run
+--instrument MNQ`` or ``--instrument M2K`` prices the same rules. The
+default remains MES.
 """
 
 from __future__ import annotations
@@ -65,7 +69,15 @@ MNQ = Instrument(
     continuous="MNQ.v.0",
     fee_note="published round-turn total on the same page, listed next to MES",
 )
-INSTRUMENTS = {MES.code: MES, MNQ.code: MNQ}
+M2K = Instrument(
+    code="M2K",
+    tick=0.10,
+    point_value=5.0,
+    fee_round_turn=FEE_ROUND_TURN,
+    continuous="M2K.v.0",
+    fee_note="published round-turn total on the same page, listed next to MES",
+)
+INSTRUMENTS = {MES.code: MES, MNQ.code: MNQ, M2K.code: M2K}
 _ACTIVE: ContextVar[Instrument | None] = ContextVar("research_instrument", default=None)
 
 

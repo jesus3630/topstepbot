@@ -139,8 +139,8 @@ def main(argv=None) -> None:
     parser.add_argument(
         "--instrument",
         default="MES",
-        choices=("MES", "MNQ"),
-        help="MES is $5/point and $1.25/tick. MNQ is $2/point and $0.50/tick. Both use the published $1.22 round turn. Default MES.",
+        choices=("MES", "MNQ", "M2K"),
+        help="MES is $5/point and $1.25/tick. MNQ is $2/point and $0.50/tick. M2K is $5/point and $0.50/tick. All three use the published $1.22 round turn. Default MES.",
     )
     args = parser.parse_args(argv)
     with using_instrument(args.instrument):
