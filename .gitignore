@@ -15,6 +15,10 @@ data/mes_1m_databento.csv
 data/*databento*.csv
 data/es_f_*.csv
 data/*.csv.tmp
+data/**/*.parquet
+data/**/*.parquet.tmp
+data/**/*.csv.gz
+data/**/*.csv.gz.tmp
 dist/
 *.egg-info/
 .DS_Store

@@ -1,4 +1,4 @@
-"""Download long 1-minute history from Databento.
+"""Download history from Databento.
 
 The default symbol is ``MES.v.0``. ``--symbol MNQ.v.0`` is the same request
 for Micro Nasdaq. The ``v`` rule is the continuous front month, ranked by the
@@ -6,11 +6,12 @@ previous day's volume (Databento roll rule ``v``, rank 0). ``MES.c.0`` is the
 calendar rule and can stay on a quiet expiry after volume has moved, so it is
 not used. ``MES.n.0`` would rank by open interest.
 
-Dataset ``GLBX.MDP3``, schema ``ohlcv-1m``, ``stype_in=continuous``. A
-continuous symbol can only be resolved to ``instrument_id``. The outright
+Dataset ``GLBX.MDP3``, ``stype_in=continuous``. The default schema is
+``ohlcv-1m``. ``--schema`` also accepts ``trades``, ``tbbo``, and ``mbp-1``.
+A continuous symbol can only be resolved to ``instrument_id``. The outright
 symbol (``MESU4``, or ``MNQH4`` for an MNQ download) comes from a free
 ``symbology.resolve`` of those ids. Instrument ids are only unique within a
-day, so the CSV contract column is ``MESU4:instrument_id`` or ``MNQH4:instrument_id``.
+day, so the contract column is ``MESU4:instrument_id`` or ``MNQH4:instrument_id``.
 
 Prices are the original outright prints. Databento does not back-adjust.
 A roll is a real price gap. ``history-report`` starts indicators and the
@@ -18,7 +19,22 @@ opening range over when the contract column changes.
 
 ``metadata.get_cost`` runs before any ``timeseries.get_range``. The download
 stops when that price is above ``--max-cost`` unless ``--yes`` is passed.
-The API key is read from ``DATABENTO_API_KEY`` and is never printed.
+``--quote-only`` prints that cost and exits without downloading. The API key
+is read from ``DATABENTO_API_KEY`` and is never printed.
+
+Tick schemas are written as one compressed file per Chicago calendar day.
+``ts_event`` is Central time. ``side`` is Databento's letter: ``A`` is a sell
+aggressor, ``B`` is a buy aggressor, ``N`` has no side. ``tbbo`` and ``mbp-1``
+also store the bid and ask price and size. On ``tbbo`` that book is the BBO
+immediately before the trade. ``mbp-1`` also stores ``action``; ``T`` is a trade
+and the other letters are top-of-book updates. Parquet is used when pyarrow is
+installed. Otherwise the day file is a gzipped CSV.
+
+``--sessions-only`` keeps each weekday's 08:00–11:00 CT window.
+``--sessions-only rth`` keeps 08:30–15:00 CT, the cash session used in the
+research note. Omitting the flag requests the whole clock. Databento prices
+one continuous start/end, including a partial day. It has no single call for
+"every morning," so those windows are quoted separately and added.
 
 The official ``databento`` package is used. A pip dry-run for CPython 3.14
 on macOS (arm64 and x86_64) resolves ``databento`` 0.87.0 with
@@ -28,7 +44,10 @@ Python 3.14 support started in databento 0.68.0.
 
 from __future__ import annotations
 
+import csv
+import gzip
 import os
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -38,36 +57,72 @@ from topstepbot.timeutil import CHICAGO
 
 DATASET = "GLBX.MDP3"
 SCHEMA = "ohlcv-1m"
+SCHEMAS = ("ohlcv-1m", "trades", "tbbo", "mbp-1")
+TICK_SCHEMAS = ("trades", "tbbo", "mbp-1")
+# morning is 08:00–11:00 CT. rth is the research cash session, 08:30–15:00 CT.
+SESSION_WINDOWS = {"morning": (8 * 60, 11 * 60), "rth": (8 * 60 + 30, 15 * 60)}
 SYMBOL = "MES.v.0"
 STYPE_IN = "continuous"
 # Databento fixed-point prices use 1e-9. A real MES or MNQ print is far below this.
 _FIXED_POINT = 1_000_000_000
 _PRICE_CEILING = 100_000.0
 DEFAULT_MAX_COST = 20.0
+DEFAULT_BAR_OUT = "data/mes_1m_databento.csv"
+TICK_COLUMNS = {
+    "trades": ("ts_event", "price", "size", "side", "contract"),
+    "tbbo": ("ts_event", "price", "size", "side", "bid_px", "ask_px", "bid_sz", "ask_sz", "contract"),
+    "mbp-1": (
+        "ts_event",
+        "price",
+        "size",
+        "side",
+        "action",
+        "bid_px",
+        "ask_px",
+        "bid_sz",
+        "ask_sz",
+        "contract",
+    ),
+}
 
 
 def fetch_databento(
     *,
     start: str,
-    out: str | Path = "data/mes_1m_databento.csv",
+    out: str | Path = DEFAULT_BAR_OUT,
     end: str | None = None,
     max_cost: float = DEFAULT_MAX_COST,
     yes: bool = False,
     symbol: str = SYMBOL,
+    schema: str = SCHEMA,
+    quote_only: bool = False,
+    sessions_only: str | None = None,
     client=None,
     say=print,
     now: datetime | None = None,
+    sleep=time.sleep,
 ) -> int:
-    """Write a resume-safe CSV. Returns how many bars are in the file.
+    """Write a resume-safe file. Returns how many bars or tick rows were saved.
 
     ``start`` and ``end`` are UTC. A plain date is midnight UTC. ``end`` is
-    exclusive. The CSV timestamps are Central time.
+    exclusive. Bar CSV timestamps, and tick ``ts_event`` values, are Central time.
+    ``quote_only`` prints ``metadata.get_cost`` and does not download.
     """
     if max_cost < 0:
         raise SystemExit("max-cost cannot be negative. Nothing was downloaded.")
     symbol = str(symbol).strip()
     if not symbol:
         raise SystemExit("The symbol is empty. Nothing was downloaded.")
+    schema = str(schema).strip()
+    if schema not in SCHEMAS:
+        raise SystemExit(
+            f"Schema {schema!r} is not one of {', '.join(SCHEMAS)}. Nothing was downloaded."
+        )
+    if sessions_only is not None and sessions_only not in SESSION_WINDOWS:
+        raise SystemExit(
+            "sessions-only must be morning (08:00-11:00 CT) or rth (08:30-15:00 CT). "
+            "Nothing was downloaded."
+        )
     if client is None:
         client = _client_from_env()
     secrets = _secrets(client)
@@ -83,7 +138,7 @@ def fetch_databento(
         raise SystemExit("The end of the request is not after the start. Nothing was downloaded.")
 
     speak(
-        f"Requesting {symbol} as a continuous symbol on {DATASET}, schema {SCHEMA}. "
+        f"Requesting {symbol} as a continuous symbol on {DATASET}, schema {schema}. "
         "The v roll rule is the front month by the previous day's volume. "
         "The c rule follows the calendar expiry and can linger on a quiet month, so it is not used. "
         "The n rule ranks by open interest. "
@@ -91,8 +146,17 @@ def fetch_databento(
         "The contract column stores the outright symbol and the instrument id, so a roll is a new name and a price gap. "
         "An instrument id is only unique within one day, which is why both are written."
     )
+    if schema in TICK_SCHEMAS:
+        speak(
+            "Databento side A is a sell aggressor and side B is a buy aggressor. N has no side. "
+            "tbbo bid and ask are the book immediately before the trade."
+        )
+    if sessions_only == "morning":
+        speak("The request keeps each weekday from 08:00 to 11:00 CT and drops the rest of the clock.")
+    elif sessions_only == "rth":
+        speak("The request keeps each weekday cash session from 08:30 to 15:00 CT and drops the rest of the clock.")
     try:
-        bounds = client.dataset_bounds()
+        bounds = client.dataset_bounds(schema)
     except Exception as exc:
         speak(
             "Could not read how far back this dataset goes. The dates you asked for will be priced. "
@@ -103,18 +167,35 @@ def fetch_databento(
         avail_start, avail_end = _pair(bounds)
         if avail_start is not None and window_start < avail_start:
             speak(
-                f"{DATASET} {SCHEMA} is available from {avail_start.isoformat()} UTC, "
+                f"{DATASET} {schema} is available from {avail_start.isoformat()} UTC, "
                 f"which is after {window_start.isoformat()} UTC. The download starts at the available time."
             )
             window_start = avail_start
         if avail_end is not None and window_end > avail_end:
             speak(
-                f"{DATASET} {SCHEMA} is available through {avail_end.isoformat()} UTC. "
+                f"{DATASET} {schema} is available through {avail_end.isoformat()} UTC. "
                 "The download stops there."
             )
             window_end = avail_end
     if window_start >= window_end:
         raise SystemExit("The requested window is outside the dataset range. Nothing was downloaded.")
+
+    if schema != SCHEMA or sessions_only is not None:
+        return _fetch_by_window(
+            client=client,
+            secrets=secrets,
+            speak=speak,
+            symbol=symbol,
+            schema=schema,
+            sessions_only=sessions_only,
+            window_start=window_start,
+            window_end=window_end,
+            out=destination,
+            max_cost=max_cost,
+            yes=yes,
+            quote_only=quote_only,
+            sleep=sleep,
+        )
 
     existing = _read_csv(destination)
     if existing:
@@ -131,27 +212,26 @@ def fetch_databento(
         speak(f"The file already covers this request. {len(existing)} bars in {destination}. Nothing was downloaded.")
         return len(existing)
 
-    cost = _guard(
+    cost = _quote_spans(
+        client,
+        [(window_start, window_end)],
+        symbol,
+        schema,
         speak,
         secrets,
-        lambda: client.cost(window_start, window_end, symbol),
+        sleep,
     )
-    try:
-        cost = float(cost)
-    except (TypeError, ValueError):
-        speak("Databento did not return a numeric cost. Nothing was downloaded.")
-        raise SystemExit("Databento did not return a numeric cost. Nothing was downloaded.") from None
-    if cost != cost or cost < 0 or cost == float("inf"):
-        speak("Databento did not return a usable cost. Nothing was downloaded.")
-        raise SystemExit("Databento did not return a usable cost. Nothing was downloaded.") from None
     price = usd_text(cost)
     cap = usd_text(max_cost)
     speak(
         f"The exact cost is {price} US dollars. "
-        f"That is the price of {symbol} {SCHEMA} on {DATASET} from {window_start.isoformat()} UTC "
+        f"That is the price of {symbol} {schema} on {DATASET} from {window_start.isoformat()} UTC "
         f"up to but not including {window_end.isoformat()} UTC, before any bars are downloaded. "
         f"The cap is {cap} US dollars."
     )
+    if quote_only:
+        _speak_quote_only(speak, cost, max_cost, price, cap)
+        return 0
     if cost > max_cost and not yes:
         message = (
             f"The exact cost is {price} US dollars, which is above the {cap} US dollar cap. "
@@ -170,7 +250,7 @@ def fetch_databento(
         fetched = _guard(
             speak,
             secrets,
-            lambda start=chunk_start, finish=chunk_end: client.bars(start, finish, symbol),
+            lambda start=chunk_start, finish=chunk_end: client.bars(start, finish, symbol, schema),
         )
         added = 0
         for record in fetched:
@@ -302,6 +382,543 @@ def month_slices(start: datetime, end: datetime):
         cursor = nxt
 
 
+def chicago_day_windows(start: datetime, end: datetime) -> list[tuple[datetime, datetime, date]]:
+    """Every Chicago calendar day that overlaps ``[start, end)``, clipped to that span."""
+    start = start.astimezone(timezone.utc)
+    end = end.astimezone(timezone.utc)
+    day = start.astimezone(CHICAGO).date()
+    last = (end - timedelta(microseconds=1)).astimezone(CHICAGO).date()
+    windows = []
+    while day <= last:
+        open_dt = datetime(day.year, day.month, day.day, tzinfo=CHICAGO)
+        close_dt = open_dt + timedelta(days=1)
+        lo = max(open_dt.astimezone(timezone.utc), start)
+        hi = min(close_dt.astimezone(timezone.utc), end)
+        if lo < hi:
+            windows.append((lo, hi, day))
+        day += timedelta(days=1)
+    return windows
+
+
+def session_windows(start: datetime, end: datetime, kind: str) -> list[tuple[datetime, datetime, date]]:
+    """Weekday session windows inside ``[start, end)``. Saturday and Sunday are skipped.
+
+    ``morning`` is 08:00–11:00 CT. ``rth`` is 08:30–15:00 CT. The end minute is exclusive.
+    """
+    if kind not in SESSION_WINDOWS:
+        raise SystemExit(
+            "sessions-only must be morning (08:00-11:00 CT) or rth (08:30-15:00 CT). "
+            "Nothing was downloaded."
+        )
+    open_min, close_min = SESSION_WINDOWS[kind]
+    start = start.astimezone(timezone.utc)
+    end = end.astimezone(timezone.utc)
+    day = start.astimezone(CHICAGO).date()
+    last = (end - timedelta(microseconds=1)).astimezone(CHICAGO).date()
+    windows = []
+    while day <= last:
+        if day.weekday() < 5:
+            open_dt = datetime(day.year, day.month, day.day, open_min // 60, open_min % 60, tzinfo=CHICAGO)
+            close_dt = datetime(day.year, day.month, day.day, close_min // 60, close_min % 60, tzinfo=CHICAGO)
+            lo = max(open_dt.astimezone(timezone.utc), start)
+            hi = min(close_dt.astimezone(timezone.utc), end)
+            if lo < hi:
+                windows.append((lo, hi, day))
+        day += timedelta(days=1)
+    return windows
+
+
+def collapse_windows(windows: list[tuple[datetime, datetime]]) -> list[tuple[datetime, datetime]]:
+    """Merge spans that touch. A gap, including the overnight between two mornings, stays split."""
+    if not windows:
+        return []
+    merged = [[windows[0][0], windows[0][1]]]
+    for start, end in windows[1:]:
+        if start == merged[-1][1]:
+            merged[-1][1] = end
+        else:
+            merged.append([start, end])
+    return [(start, end) for start, end in merged]
+
+
+def normalize_tick_row(raw: dict, schema: str) -> dict | None:
+    """One order-flow row. Returns None when the price, size, or side cannot be read."""
+    if schema not in TICK_COLUMNS:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    moment = _as_utc(raw.get("ts_event"))
+    if moment is None:
+        return None
+    price = scale_price(raw.get("price"))
+    if price is None:
+        return None
+    size = _whole_size(raw.get("size"))
+    if size is None:
+        return None
+    side = _side_code(raw.get("side"))
+    if side is None:
+        return None
+    row = {
+        "ts_event": moment.astimezone(CHICAGO),
+        "price": price,
+        "size": size,
+        "side": side,
+        "contract": contract_label(
+            "" if raw.get("raw_symbol") is None else str(raw.get("raw_symbol")),
+            raw.get("instrument_id"),
+        ),
+    }
+    if schema in {"tbbo", "mbp-1"}:
+        row["bid_px"] = scale_price(raw.get("bid_px"))
+        row["ask_px"] = scale_price(raw.get("ask_px"))
+        row["bid_sz"] = _whole_size(raw.get("bid_sz"))
+        row["ask_sz"] = _whole_size(raw.get("ask_sz"))
+    if schema == "mbp-1":
+        row["action"] = _action_code(raw.get("action"))
+    return row
+
+
+def tick_output_dir(out: Path, symbol: str, schema: str, sessions_only: str | None = None) -> Path:
+    """Directory of per-day tick files. The 1-minute CSV default is not reused.
+
+    The default directory includes the session, so a morning pull does not
+    mark a later full-day pull as already downloaded.
+    """
+    if out.name == Path(DEFAULT_BAR_OUT).name:
+        name = f"{_symbol_root(symbol)}_{schema.replace('-', '')}"
+        if sessions_only:
+            name = f"{name}_{sessions_only}"
+        return out.parent / name
+    if out.name.endswith(".csv.gz"):
+        return out.with_name(out.name[: -len(".csv.gz")])
+    if out.suffix.lower() in {".csv", ".parquet"}:
+        return out.with_name(out.stem)
+    return out
+
+
+def write_tick_day(directory: Path, day: date, rows: list[dict], schema: str) -> Path:
+    """Atomically write one Chicago day. Parquet when pyarrow is installed, else gzipped CSV."""
+    directory.mkdir(parents=True, exist_ok=True)
+    ordered = sorted(rows, key=lambda row: (row["ts_event"], row["contract"], row["price"], row["size"]))
+    if _parquet_available():
+        final = directory / f"{day.isoformat()}.parquet"
+        temporary = directory / f"{day.isoformat()}.parquet.tmp"
+        _write_parquet(temporary, ordered, schema)
+    else:
+        final = directory / f"{day.isoformat()}.csv.gz"
+        temporary = directory / f"{day.isoformat()}.csv.gz.tmp"
+        _write_csv_gz(temporary, ordered, schema)
+    os.replace(temporary, final)
+    return final
+
+
+def day_file(directory: Path, day: date) -> Path | None:
+    for name in (f"{day.isoformat()}.parquet", f"{day.isoformat()}.csv.gz"):
+        path = directory / name
+        if path.is_file() and path.stat().st_size > 0:
+            return path
+    return None
+
+
+def _fetch_by_window(
+    *,
+    client,
+    secrets,
+    speak,
+    symbol: str,
+    schema: str,
+    sessions_only: str | None,
+    window_start: datetime,
+    window_end: datetime,
+    out: Path,
+    max_cost: float,
+    yes: bool,
+    quote_only: bool,
+    sleep,
+) -> int:
+    if schema == SCHEMA:
+        windows = session_windows(window_start, window_end, sessions_only or "morning")
+        existing = _read_csv(out)
+        newest = max((row[0] for row in existing.values()), default=None)
+        pending = []
+        for start, end, day in windows:
+            if newest is not None and newest.astimezone(timezone.utc) + timedelta(minutes=1) >= end:
+                continue
+            pending.append((start, end, day))
+        if windows and not pending:
+            speak(f"The file already covers this request. {len(existing)} bars in {out}. Nothing was downloaded.")
+            return len(existing)
+        spans = [(start, end) for start, end, _day in pending]
+        label = "weekday window"
+    else:
+        directory = tick_output_dir(out, symbol, schema, sessions_only)
+        if sessions_only:
+            windows = session_windows(window_start, window_end, sessions_only)
+            pending = [(start, end, day) for start, end, day in windows if day_file(directory, day) is None]
+            spans = [(start, end) for start, end, _day in pending]
+            label = "weekday window"
+        else:
+            windows = chicago_day_windows(window_start, window_end)
+            pending = [(start, end, day) for start, end, day in windows if day_file(directory, day) is None]
+            spans = collapse_windows([(start, end) for start, end, _day in pending])
+            label = "Chicago day"
+        kept = len(windows) - len(pending)
+        if kept:
+            speak(
+                f"{kept} day files are already in {directory}. "
+                "The cost below does not include them."
+            )
+        if windows and not pending:
+            speak(f"The day files already cover this request. Nothing was downloaded. Directory: {directory}.")
+            return _count_tick_rows(directory, [day for _start, _end, day in windows])
+
+    if not spans:
+        raise SystemExit("No weekday session falls inside this request. Nothing was downloaded.")
+
+    cost = _quote_spans(client, spans, symbol, schema, speak, secrets, sleep)
+    price = usd_text(cost)
+    cap = usd_text(max_cost)
+    if len(spans) == 1:
+        speak(
+            f"The exact cost is {price} US dollars. "
+            f"That is the price of {symbol} {schema} on {DATASET} from {spans[0][0].isoformat()} UTC "
+            f"up to but not including {spans[0][1].isoformat()} UTC, before any rows are downloaded. "
+            f"The cap is {cap} US dollars."
+        )
+    else:
+        speak(
+            f"The exact cost is {price} US dollars. "
+            f"That is the sum of {len(spans)} metadata.get_cost calls for {symbol} {schema} on {DATASET}, "
+            f"one per {label}. "
+            f"The first window starts {spans[0][0].isoformat()} UTC and the last ends {spans[-1][1].isoformat()} UTC, "
+            "end exclusive. "
+            "Databento prices one continuous start and end, including a partial day. "
+            "It has no single call for a union of mornings, so each window is quoted on its own and the prices are added. "
+            "A single call from the first start to the last end would include the hours outside these windows, "
+            "and that is not this price. "
+            f"The cap is {cap} US dollars."
+        )
+    if quote_only:
+        _speak_quote_only(speak, cost, max_cost, price, cap)
+        return 0
+    if cost > max_cost and not yes:
+        message = (
+            f"The exact cost is {price} US dollars, which is above the {cap} US dollar cap. "
+            "Nothing was downloaded. Pass --yes to download anyway, or raise --max-cost."
+        )
+        speak(message)
+        raise SystemExit(message)
+    if cost > max_cost:
+        speak(
+            f"The exact cost is {price} US dollars, which is above the {cap} US dollar cap. "
+            "Continuing because --yes was passed."
+        )
+
+    if schema == SCHEMA:
+        return _download_bar_windows(client, secrets, speak, symbol, schema, pending, out, existing)
+    if sessions_only:
+        return _download_session_ticks(client, secrets, speak, symbol, schema, pending, directory)
+    return _download_span_ticks(client, secrets, speak, symbol, schema, pending, spans, directory)
+
+
+def _quote_spans(client, spans, symbol: str, schema: str, speak, secrets, sleep) -> float:
+    total = 0.0
+    count = len(spans)
+    for index, (start, end) in enumerate(spans, start=1):
+        part = _as_cost(_cost_with_retry(client, start, end, symbol, schema, speak, secrets, sleep), speak)
+        total += part
+        if count > 1 and index % 25 == 0 and index != count:
+            speak(
+                f"Quoted {index} of {count} windows. Running total {usd_text(total)} US dollars. "
+                "metadata.get_cost does not download and does not spend credit."
+            )
+    return total
+
+
+def _cost_with_retry(client, start, end, symbol, schema, speak, secrets, sleep):
+    delay = 2.0
+    for attempt in range(6):
+        try:
+            return client.cost(start, end, symbol, schema)
+        except SystemExit:
+            raise
+        except Exception as exc:
+            message = _clean(str(exc), secrets)
+            if "429" not in message or attempt == 5:
+                speak(message)
+                raise SystemExit(message) from None
+            speak(message)
+            speak(
+                f"Databento rate-limited the cost quote. Waiting {delay:.0f} seconds, then retrying. "
+                "The key is not printed."
+            )
+            sleep(delay)
+            delay *= 2
+    raise SystemExit("Databento did not return a cost. Nothing was downloaded.")
+
+
+def _as_cost(cost, speak) -> float:
+    try:
+        number = float(cost)
+    except (TypeError, ValueError):
+        speak("Databento did not return a numeric cost. Nothing was downloaded.")
+        raise SystemExit("Databento did not return a numeric cost. Nothing was downloaded.") from None
+    if number != number or number < 0 or number == float("inf"):
+        speak("Databento did not return a usable cost. Nothing was downloaded.")
+        raise SystemExit("Databento did not return a usable cost. Nothing was downloaded.") from None
+    return number
+
+
+def _speak_quote_only(speak, cost: float, max_cost: float, price: str, cap: str) -> None:
+    speak("Quote only. metadata.get_cost does not download and does not spend credit. Nothing was downloaded.")
+    if cost > max_cost:
+        speak(
+            f"A download of this request would stop, because {price} US dollars is above the {cap} US dollar cap. "
+            "Pass --yes or raise --max-cost to download it."
+        )
+    speak("This command cannot place, change, or cancel an order.")
+
+
+def _download_bar_windows(client, secrets, speak, symbol, schema, pending, out: Path, existing: dict) -> int:
+    rows = dict(existing)
+    for start, end, day in pending:
+        fetched = _guard(
+            speak,
+            secrets,
+            lambda start=start, finish=end: client.bars(start, finish, symbol, schema),
+        )
+        added = 0
+        for record in fetched:
+            written = row_from_record(record)
+            if written is None:
+                continue
+            moment, open_, high, low, close, volume, name = written
+            rows[(name, moment)] = (moment, open_, high, low, close, volume, name)
+            added += 1
+        _write_csv(out, rows)
+        speak(f"{day.isoformat()}: {added} bars. File holds {len(rows)} bars.")
+    speak("This command cannot place, change, or cancel an order.")
+    return len(rows)
+
+
+def _download_session_ticks(client, secrets, speak, symbol, schema, pending, directory: Path) -> int:
+    saved = 0
+    for start, end, day in pending:
+        fetched = _guard(
+            speak,
+            secrets,
+            lambda start=start, finish=end: client.records(start, finish, symbol, schema),
+        )
+        rows = []
+        for raw in fetched:
+            row = normalize_tick_row(raw, schema)
+            if row is not None and row["ts_event"].date() == day:
+                rows.append(row)
+        path = write_tick_day(directory, day, rows, schema)
+        saved += len(rows)
+        speak(f"{day.isoformat()}: {len(rows)} rows in {path}.")
+    speak(f"Done. {saved} new rows under {directory}.")
+    speak("This command cannot place, change, or cancel an order.")
+    return saved
+
+
+def _download_span_ticks(client, secrets, speak, symbol, schema, pending, spans, directory: Path) -> int:
+    saved = 0
+    by_span: dict[tuple[datetime, datetime], list[tuple[datetime, datetime, date]]] = {span: [] for span in spans}
+    for start, end, day in pending:
+        for span in spans:
+            if start >= span[0] and end <= span[1]:
+                by_span[span].append((start, end, day))
+                break
+    for span, days in by_span.items():
+        pending_rows = {day: [] for _start, _end, day in days}
+        covered = span[0]
+        for chunk_start, chunk_end in month_slices(span[0], span[1]):
+            fetched = _guard(
+                speak,
+                secrets,
+                lambda start=chunk_start, finish=chunk_end: client.records(start, finish, symbol, schema),
+            )
+            for raw in fetched:
+                row = normalize_tick_row(raw, schema)
+                if row is None:
+                    continue
+                day = row["ts_event"].date()
+                if day in pending_rows:
+                    pending_rows[day].append(row)
+            covered = chunk_end
+            for day in [day for day in list(pending_rows) if _day_ready(day, covered, span[1])]:
+                path = write_tick_day(directory, day, pending_rows.pop(day), schema)
+                count = _rows_in_file(path)
+                saved += count
+                speak(f"{day.isoformat()}: {count} rows in {path}.")
+        for day, rows in list(pending_rows.items()):
+            path = write_tick_day(directory, day, rows, schema)
+            pending_rows.pop(day)
+            saved += len(rows)
+            speak(f"{day.isoformat()}: {len(rows)} rows in {path}.")
+    speak(f"Done. {saved} new rows under {directory}.")
+    speak("This command cannot place, change, or cancel an order.")
+    return saved
+
+
+def _day_ready(day: date, covered: datetime, span_end: datetime) -> bool:
+    day_end = datetime(day.year, day.month, day.day, tzinfo=CHICAGO) + timedelta(days=1)
+    return covered >= min(day_end.astimezone(timezone.utc), span_end)
+
+
+def _count_tick_rows(directory: Path, days: list[date]) -> int:
+    total = 0
+    for day in days:
+        path = day_file(directory, day)
+        if path is not None:
+            total += _rows_in_file(path)
+    return total
+
+
+def _rows_in_file(path: Path) -> int:
+    if path.suffix == ".gz":
+        with gzip.open(path, "rt", encoding="utf-8", newline="") as handle:
+            return max(sum(1 for _line in handle) - 1, 0)
+    try:
+        import pyarrow.parquet as pq
+    except ImportError:
+        return 0
+    return int(pq.read_metadata(path).num_rows)
+
+
+def _write_csv_gz(path: Path, rows: list[dict], schema: str) -> None:
+    columns = TICK_COLUMNS[schema]
+    with gzip.open(path, "wt", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=columns)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({column: _csv_cell(row.get(column)) for column in columns})
+
+
+def _write_parquet(path: Path, rows: list[dict], schema: str) -> None:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    columns = TICK_COLUMNS[schema]
+    arrays = {column: [_parquet_value(column, row.get(column)) for row in rows] for column in columns}
+    types = {
+        "ts_event": pa.timestamp("us", tz="America/Chicago"),
+        "price": pa.float64(),
+        "size": pa.int64(),
+        "side": pa.string(),
+        "action": pa.string(),
+        "bid_px": pa.float64(),
+        "ask_px": pa.float64(),
+        "bid_sz": pa.int64(),
+        "ask_sz": pa.int64(),
+        "contract": pa.string(),
+    }
+    table = pa.table(arrays, schema=pa.schema([(column, types[column]) for column in columns]))
+    pq.write_table(table, path, compression="zstd")
+
+
+def _parquet_available() -> bool:
+    try:
+        import pyarrow  # noqa: F401
+        import pyarrow.parquet  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _csv_cell(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.astimezone(CHICAGO).isoformat(timespec="microseconds")
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    return str(value)
+
+
+def _parquet_value(column: str, value: object):
+    if column == "ts_event" and isinstance(value, datetime):
+        return value.astimezone(CHICAGO)
+    return value
+
+
+def _symbol_root(symbol: str) -> str:
+    root = symbol.split(".", 1)[0].strip().lower()
+    cleaned = "".join(char for char in root if char.isalnum())
+    return cleaned or "symbol"
+
+
+def _side_code(value: object) -> str | None:
+    """Databento side. A is a sell aggressor, B is a buy aggressor, N has no side."""
+    if value is None:
+        return "N"
+    if isinstance(value, bytes):
+        value = value.decode("ascii", "ignore")
+    text = str(value).strip()
+    if text in {"A", "a", "Ask", "ASK"}:
+        return "A"
+    if text in {"B", "b", "Bid", "BID"}:
+        return "B"
+    if text in {"N", "n", "None", "NONE", "nan", "NaN", ""}:
+        return "N"
+    return None
+
+
+def _action_code(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        value = value.decode("ascii", "ignore")
+    text = str(value).strip()
+    names = {
+        "A": "A",
+        "Add": "A",
+        "M": "M",
+        "Modify": "M",
+        "C": "C",
+        "Cancel": "C",
+        "T": "T",
+        "Trade": "T",
+        "F": "F",
+        "Fill": "F",
+        "R": "R",
+        "Clear": "R",
+        "N": "N",
+        "None": "N",
+    }
+    if text in names:
+        return names[text]
+    if len(text) == 1 and text.isalpha():
+        return text.upper()
+    return ""
+
+
+def _whole_size(value: object) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number < 0 or number == float("inf"):
+        return None
+    return int(number)
+
+
+def _as_utc(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if hasattr(value, "to_pydatetime"):
+        value = value.to_pydatetime()
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def parse_dataset_bounds(body: object, schema: str = SCHEMA) -> tuple[datetime | None, datetime | None]:
     if not isinstance(body, dict):
         return (None, None)
@@ -317,7 +934,7 @@ def parse_dataset_bounds(body: object, schema: str = SCHEMA) -> tuple[datetime |
 
 
 class DatabentoGateway:
-    """Official client. Tests pass a fake with the same three methods instead."""
+    """Official client. Tests pass a fake with the same methods instead."""
 
     def __init__(self, historical, api_key: str) -> None:
         self._hist = historical
@@ -326,28 +943,28 @@ class DatabentoGateway:
     def __repr__(self) -> str:
         return "DatabentoGateway(key=redacted)"
 
-    def dataset_bounds(self) -> tuple[datetime | None, datetime | None]:
+    def dataset_bounds(self, schema: str = SCHEMA) -> tuple[datetime | None, datetime | None]:
         body = self._hist.metadata.get_dataset_range(DATASET)
-        return parse_dataset_bounds(body, SCHEMA)
+        return parse_dataset_bounds(body, schema)
 
-    def cost(self, start: datetime, end: datetime, symbol: str) -> float:
+    def cost(self, start: datetime, end: datetime, symbol: str, schema: str = SCHEMA) -> float:
         value = self._hist.metadata.get_cost(
             dataset=DATASET,
             start=start,
             end=end,
             symbols=symbol,
-            schema=SCHEMA,
+            schema=schema,
             stype_in=STYPE_IN,
         )
         return float(value)
 
-    def bars(self, start: datetime, end: datetime, symbol: str) -> list[tuple]:
+    def bars(self, start: datetime, end: datetime, symbol: str, schema: str = SCHEMA) -> list[tuple]:
         store = self._hist.timeseries.get_range(
             dataset=DATASET,
             start=start,
             end=end,
             symbols=symbol,
-            schema=SCHEMA,
+            schema=schema,
             stype_in=STYPE_IN,
             stype_out="instrument_id",
         )
@@ -372,6 +989,44 @@ class DatabentoGateway:
                     raw,
                 )
             )
+        return rows
+
+    def records(self, start: datetime, end: datetime, symbol: str, schema: str = SCHEMA) -> list[dict]:
+        """Tick rows for ``trades``, ``tbbo``, or ``mbp-1``. Prices are still raw until normalize."""
+        store = self._hist.timeseries.get_range(
+            dataset=DATASET,
+            start=start,
+            end=end,
+            symbols=symbol,
+            schema=schema,
+            stype_in=STYPE_IN,
+            stype_out="instrument_id",
+        )
+        frame = store.to_df(price_type="float", pretty_ts=True, map_symbols=False, tz="UTC")
+        resolved = self._resolve_raw(store, frame, start, end)
+        rows = []
+        for record in frame.itertuples(index=False):
+            moment = getattr(record, "ts_event", None)
+            if hasattr(moment, "to_pydatetime"):
+                moment = moment.to_pydatetime()
+            instrument = getattr(record, "instrument_id", "")
+            raw = raw_symbol_on(resolved, instrument, moment if isinstance(moment, datetime) else start)
+            row = {
+                "ts_event": moment,
+                "price": getattr(record, "price", None),
+                "size": getattr(record, "size", None),
+                "side": getattr(record, "side", None),
+                "instrument_id": instrument,
+                "raw_symbol": raw,
+            }
+            if schema in {"tbbo", "mbp-1"}:
+                row["bid_px"] = _field(record, "bid_px_00", "bid_px")
+                row["ask_px"] = _field(record, "ask_px_00", "ask_px")
+                row["bid_sz"] = _field(record, "bid_sz_00", "bid_sz")
+                row["ask_sz"] = _field(record, "ask_sz_00", "ask_sz")
+            if schema == "mbp-1":
+                row["action"] = getattr(record, "action", None)
+            rows.append(row)
         return rows
 
     def _resolve_raw(self, store, frame, start: datetime, end: datetime) -> dict:
@@ -544,6 +1199,15 @@ def _as_date(value: object) -> date | None:
     if moment is None:
         return None
     return moment.date()
+
+
+def _field(record, *names):
+    for name in names:
+        if hasattr(record, name):
+            value = getattr(record, name)
+            if value is not None:
+                return value
+    return None
 
 
 def _instrument_text(instrument_id: object) -> str:

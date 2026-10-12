@@ -34,18 +34,22 @@ class FakeDatabento:
         self.calls = []
         self.api_key = KEY
 
-    def dataset_bounds(self):
-        self.calls.append("bounds")
+    def dataset_bounds(self, schema="ohlcv-1m"):
+        self.calls.append(("bounds", schema))
         return self.bounds
 
-    def cost(self, start, end, symbol):
-        self.calls.append(("cost", start, end, symbol))
+    def cost(self, start, end, symbol, schema="ohlcv-1m"):
+        self.calls.append(("cost", start, end, symbol, schema))
         if self.boom:
             raise RuntimeError(f"rejected {self.api_key}")
         return self.cost_value
 
-    def bars(self, start, end, symbol):
-        self.calls.append(("bars", start, end, symbol))
+    def bars(self, start, end, symbol, schema="ohlcv-1m"):
+        self.calls.append(("bars", start, end, symbol, schema))
+        return list(self.rows)
+
+    def records(self, start, end, symbol, schema="ohlcv-1m"):
+        self.calls.append(("records", start, end, symbol, schema))
         return list(self.rows)
 
 
@@ -279,8 +283,297 @@ def test_cli_symbol_defaults_to_mes_and_passes_mnq(monkeypatch, tmp_path):
     assert seen["out"] == str(out)
     assert main(["fetch-databento", "--start", "2019-05-01", "--out", str(out)]) == 0
     assert seen["symbol"] == "MES.v.0"
+    assert seen["schema"] == "ohlcv-1m"
+    assert seen["quote_only"] is False
+    assert seen["sessions_only"] is None
     with pytest.raises(SystemExit, match="empty"):
         main(["fetch-databento", "--symbol", "  ", "--start", "2019-05-01"])
+    assert main(["fetch-databento", "--start", "2019-05-01", "--schema", "tbbo", "--quote-only", "--sessions-only"]) == 0
+    assert seen["schema"] == "tbbo"
+    assert seen["quote_only"] is True
+    assert seen["sessions_only"] == "morning"
+    assert main(["fetch-databento", "--start", "2019-05-01", "--schema", "tbbo", "--sessions-only", "rth"]) == 0
+    assert seen["sessions_only"] == "rth"
+
+
+def _trade(moment, side="B", price=5000.25, size=4, bid=5000.0, ask=5000.25):
+    return {
+        "ts_event": moment,
+        "price": price,
+        "size": size,
+        "side": side,
+        "bid_px": bid,
+        "ask_px": ask,
+        "bid_sz": 12,
+        "ask_sz": 9,
+        "raw_symbol": "MESM9",
+        "instrument_id": 5,
+        "action": "T",
+    }
+
+
+def test_session_windows_skip_weekends_and_follow_chicago_clock():
+    from topstepbot.databentofetch import collapse_windows, session_windows
+
+    morning = session_windows(datetime(2019, 5, 4, tzinfo=UTC), datetime(2019, 5, 8, tzinfo=UTC), "morning")
+    assert [window[2].isoformat() for window in morning] == ["2019-05-06", "2019-05-07"]
+    assert morning[0][0] == datetime(2019, 5, 6, 13, tzinfo=UTC)
+    assert morning[0][1] == datetime(2019, 5, 6, 16, tzinfo=UTC)
+    assert len(collapse_windows([(window[0], window[1]) for window in morning])) == 2
+
+    winter = session_windows(datetime(2019, 1, 7, tzinfo=UTC), datetime(2019, 1, 8, tzinfo=UTC), "morning")
+    assert winter[0][0] == datetime(2019, 1, 7, 14, tzinfo=UTC)
+    assert winter[0][1] == datetime(2019, 1, 7, 17, tzinfo=UTC)
+
+    cash = session_windows(datetime(2019, 5, 6, tzinfo=UTC), datetime(2019, 5, 7, tzinfo=UTC), "rth")
+    assert cash[0][0] == datetime(2019, 5, 6, 13, 30, tzinfo=UTC)
+    assert cash[0][1] == datetime(2019, 5, 6, 20, tzinfo=UTC)
+
+
+def test_quote_only_sums_morning_windows_and_does_not_download(tmp_path):
+    client = FakeDatabento(cost=1.25)
+    lines = []
+    out = tmp_path / "mes_1m_databento.csv"
+    count = fetch_databento(
+        start="2019-05-04",
+        end="2019-05-08",
+        out=out,
+        schema="tbbo",
+        quote_only=True,
+        sessions_only="morning",
+        max_cost=20,
+        client=client,
+        say=lines.append,
+    )
+    text = " ".join(lines)
+    assert count == 0
+    assert "2.50 US dollars" in text
+    assert "sum of 2 metadata.get_cost" in text
+    assert "does not spend credit" in text
+    assert "Nothing was downloaded" in text
+    assert KEY not in text
+    assert "records" not in _kinds(client)
+    assert "bars" not in _kinds(client)
+    costs = [call for call in client.calls if isinstance(call, tuple) and call[0] == "cost"]
+    assert costs[0][1] == datetime(2019, 5, 6, 13, tzinfo=UTC)
+    assert costs[0][2] == datetime(2019, 5, 6, 16, tzinfo=UTC)
+    assert costs[0][4] == "tbbo"
+    assert not (tmp_path / "mes_tbbo_morning").exists()
+    assert not out.exists()
+
+    blocked = []
+    pricey = FakeDatabento(cost=30)
+    assert (
+        fetch_databento(
+            start="2019-05-06",
+            end="2019-05-07",
+            out=out,
+            schema="tbbo",
+            quote_only=True,
+            sessions_only="morning",
+            max_cost=20,
+            client=pricey,
+            say=blocked.append,
+        )
+        == 0
+    )
+    assert "above the 20.00" in " ".join(blocked)
+    assert "records" not in _kinds(pricey)
+    assert KEY not in " ".join(blocked)
+
+
+def test_tick_days_are_resume_safe_and_keep_the_book(tmp_path):
+    import gzip
+
+    from topstepbot.databentofetch import normalize_tick_row
+
+    assert normalize_tick_row({"ts_event": datetime(2019, 5, 6, 14, tzinfo=UTC), "price": 1, "size": 1, "side": "X"}, "trades") is None
+    sell = normalize_tick_row(_trade(datetime(2019, 5, 6, 14, tzinfo=UTC), side=b"A"), "tbbo")
+    assert sell["side"] == "A"
+    assert sell["ts_event"].isoformat() == "2019-05-06T09:00:00-05:00"
+
+    monday = datetime(2019, 5, 6, 14, tzinfo=UTC)
+    tuesday = datetime(2019, 5, 7, 14, tzinfo=UTC)
+    client = FakeDatabento(
+        cost=2,
+        rows=[
+            _trade(monday, price=5_000_250_000_000),
+            _trade(tuesday, side="A", price=5001),
+            {"ts_event": monday, "price": 1, "size": 1, "side": "nope"},
+        ],
+    )
+    lines = []
+    directory = tmp_path / "flow"
+    settings = Path("config/settings.yaml")
+    before = settings.read_text(encoding="utf-8")
+    saved = fetch_databento(
+        start="2019-05-06",
+        end="2019-05-08",
+        out=directory,
+        schema="tbbo",
+        sessions_only="morning",
+        client=client,
+        say=lines.append,
+    )
+    assert settings.read_text(encoding="utf-8") == before
+    assert saved == 2
+    assert "records" in _kinds(client)
+    assert KEY not in " ".join(lines)
+    with gzip.open(directory / "2019-05-06.csv.gz", "rt", encoding="utf-8", newline="") as handle:
+        row = next(csv.DictReader(handle))
+    assert row["ts_event"].startswith("2019-05-06T09:00:00")
+    assert row["ts_event"].endswith("-05:00")
+    assert float(row["price"]) == pytest.approx(5000.25)
+    assert row["size"] == "4"
+    assert row["side"] == "B"
+    assert float(row["bid_px"]) == pytest.approx(5000.0)
+    assert float(row["ask_px"]) == pytest.approx(5000.25)
+    assert row["bid_sz"] == "12"
+    assert row["ask_sz"] == "9"
+    assert row["contract"] == "MESM9:5"
+    assert "action" not in row
+
+    again = FakeDatabento(cost=99, rows=[_trade(monday)])
+    spoken = []
+    assert (
+        fetch_databento(
+            start="2019-05-06",
+            end="2019-05-08",
+            out=directory,
+            schema="tbbo",
+            sessions_only="morning",
+            client=again,
+            say=spoken.append,
+        )
+        == 2
+    )
+    assert "cost" not in _kinds(again)
+    assert "records" not in _kinds(again)
+    assert "already cover" in " ".join(spoken)
+
+    full = FakeDatabento(cost=3, rows=[_trade(monday), _trade(tuesday, side="Bid")])
+    fetch_databento(
+        start="2019-05-06T05:00:00+00:00",
+        end="2019-05-08T05:00:00+00:00",
+        out=tmp_path / "allday",
+        schema="trades",
+        client=full,
+        say=lines.append,
+    )
+    costs = [call for call in full.calls if isinstance(call, tuple) and call[0] == "cost"]
+    assert len(costs) == 1
+    assert costs[0][4] == "trades"
+    with gzip.open(tmp_path / "allday" / "2019-05-07.csv.gz", "rt", encoding="utf-8", newline="") as handle:
+        traded = next(csv.DictReader(handle))
+    assert traded["side"] == "B"
+    assert "bid_px" not in traded
+
+    book = FakeDatabento(cost=1, rows=[_trade(monday, side="Ask")])
+    fetch_databento(
+        start="2019-05-06",
+        end="2019-05-07",
+        out=tmp_path / "book",
+        schema="mbp-1",
+        sessions_only="rth",
+        client=book,
+        say=lines.append,
+    )
+    with gzip.open(tmp_path / "book" / "2019-05-06.csv.gz", "rt", encoding="utf-8", newline="") as handle:
+        updated = next(csv.DictReader(handle))
+    assert updated["action"] == "T"
+    assert updated["side"] == "A"
+    assert float(updated["bid_px"]) == pytest.approx(5000.0)
+
+
+def test_parquet_day_file_is_used_when_pyarrow_is_present(monkeypatch, tmp_path):
+    from topstepbot.databentofetch import write_tick_day
+
+    monkeypatch.setattr("topstepbot.databentofetch._parquet_available", lambda: True)
+    captured = {}
+
+    def fake_parquet(path, rows, schema):
+        captured["rows"] = rows
+        captured["schema"] = schema
+        path.write_bytes(b"PAR1")
+
+    monkeypatch.setattr("topstepbot.databentofetch._write_parquet", fake_parquet)
+    client = FakeDatabento(cost=1, rows=[_trade(datetime(2019, 5, 6, 14, tzinfo=UTC))])
+    fetch_databento(
+        start="2019-05-06",
+        end="2019-05-07",
+        out=tmp_path / "flow",
+        schema="tbbo",
+        sessions_only="morning",
+        client=client,
+        say=lambda _line: None,
+    )
+    assert (tmp_path / "flow" / "2019-05-06.parquet").read_bytes() == b"PAR1"
+    assert captured["schema"] == "tbbo"
+    assert captured["rows"][0]["side"] == "B"
+    assert "bid_px" in captured["rows"][0]
+    written = write_tick_day(tmp_path / "direct", datetime(2019, 5, 6).date(), captured["rows"], "tbbo")
+    assert written.name == "2019-05-06.parquet"
+
+
+def test_a_weekend_request_and_a_bad_schema_download_nothing(tmp_path):
+    lines = []
+    with pytest.raises(SystemExit, match="No weekday session"):
+        fetch_databento(
+            start="2019-05-04",
+            end="2019-05-06",
+            out=tmp_path / "none",
+            schema="tbbo",
+            sessions_only="morning",
+            client=FakeDatabento(),
+            say=lines.append,
+        )
+    with pytest.raises(SystemExit, match="Schema"):
+        fetch_databento(
+            start="2019-05-06",
+            schema="mbo",
+            out=tmp_path / "no",
+            client=FakeDatabento(),
+            say=lines.append,
+        )
+    assert KEY not in " ".join(lines)
+
+
+def test_rate_limit_on_the_cost_quote_retries_without_printing_the_key(tmp_path):
+    class Flaky:
+        def __init__(self):
+            self.tries = 0
+            self.api_key = KEY
+
+        def dataset_bounds(self, schema="ohlcv-1m"):
+            return (None, None)
+
+        def cost(self, start, end, symbol, schema="ohlcv-1m"):
+            self.tries += 1
+            if self.tries == 1:
+                raise RuntimeError(f"HTTP 429 for {self.api_key}")
+            return 1.5
+
+        def records(self, start, end, symbol, schema="ohlcv-1m"):
+            raise AssertionError("downloaded")
+
+    delays = []
+    lines = []
+    fetch_databento(
+        start="2019-05-06",
+        end="2019-05-07",
+        out=tmp_path / "flow",
+        schema="tbbo",
+        quote_only=True,
+        sessions_only="morning",
+        client=Flaky(),
+        say=lines.append,
+        sleep=delays.append,
+    )
+    text = " ".join(lines)
+    assert delays == [2.0]
+    assert "1.50 US dollars" in text
+    assert KEY not in text
+    assert "[REDACTED]" in text
 
 
 def test_mnq_named_roll_resets_the_opening_range(tmp_path):

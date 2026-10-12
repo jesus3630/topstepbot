@@ -76,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
 
     fetch_db = sub.add_parser(
         "fetch-databento",
-        help="Download long 1-minute history from Databento. Cannot place orders.",
+        help="Download Databento history, or print metadata.get_cost and exit. Cannot place orders.",
     )
     fetch_db.add_argument("--start", required=True, help="First day as a UTC date, for example 2019-05-01.")
     fetch_db.add_argument("--end", default="", help="Exclusive UTC end date. Default is the latest available bar.")
@@ -84,6 +84,12 @@ def main(argv: list[str] | None = None) -> int:
         "--symbol",
         default="MES.v.0",
         help="Databento continuous symbol. Default MES.v.0. Example: MNQ.v.0.",
+    )
+    fetch_db.add_argument(
+        "--schema",
+        default="ohlcv-1m",
+        choices=["ohlcv-1m", "trades", "tbbo", "mbp-1"],
+        help="Databento schema. Default ohlcv-1m. Tick schemas are trades, tbbo, and mbp-1.",
     )
     fetch_db.add_argument("--out", default="data/mes_1m_databento.csv")
     fetch_db.add_argument(
@@ -96,6 +102,22 @@ def main(argv: list[str] | None = None) -> int:
         "--yes",
         action="store_true",
         help="Download even when the quoted cost is above --max-cost.",
+    )
+    fetch_db.add_argument(
+        "--quote-only",
+        action="store_true",
+        help="Print metadata.get_cost for this request and exit. Does not download.",
+    )
+    fetch_db.add_argument(
+        "--sessions-only",
+        nargs="?",
+        const="morning",
+        default=None,
+        choices=["morning", "rth"],
+        help=(
+            "Restrict each weekday. With no value, or morning, keep 08:00-11:00 CT. "
+            "rth keeps the cash session 08:30-15:00 CT. Omit the flag for the full clock."
+        ),
     )
 
     args = parser.parse_args(argv)
@@ -150,6 +172,9 @@ def main(argv: list[str] | None = None) -> int:
             max_cost=args.max_cost,
             yes=args.yes,
             symbol=symbol,
+            schema=args.schema,
+            quote_only=args.quote_only,
+            sessions_only=args.sessions_only,
         )
         return 0
     return 1

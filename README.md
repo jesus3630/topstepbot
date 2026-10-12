@@ -184,6 +184,21 @@ python -m topstepbot fetch-databento --symbol MNQ.v.0 --start 2019-05-01 --out d
 
 Before any bars are downloaded, the command calls Databento `metadata.get_cost` and prints the exact price in US dollars. If that price is above $20, it stops and writes nothing. Pass `--yes` to download anyway, or raise the cap with `--max-cost 40`. A date is midnight UTC, and the end is exclusive. The CSV timestamps are Central time. Columns match `fetch-history`: `timestamp,open,high,low,close,volume,contract`.
 
+`--schema` defaults to `ohlcv-1m`. `trades`, `tbbo`, and `mbp-1` are the order-flow schemas. `--quote-only` prints `metadata.get_cost` and exits without downloading and without spending credit. Tick schemas are one compressed file per Chicago day under the output directory (Parquet when pyarrow is installed, otherwise a gzipped CSV). A day file that is already there is not downloaded again, and it is left out of the next quote. The columns are `ts_event` in Central time, `price`, `size`, `side`, and `contract`. Databento `side` `A` is a sell aggressor and `B` is a buy aggressor. `tbbo` and `mbp-1` also store `bid_px`, `ask_px`, `bid_sz`, and `ask_sz`. On `tbbo` that book is the BBO immediately before the trade. `mbp-1` also stores `action`, and `T` is a trade.
+
+`--sessions-only` keeps each weekday from 08:00 to 11:00 CT. `--sessions-only rth` keeps the cash session, 08:30 to 15:00 CT. Omit the flag for the full clock, including the overnight. Databento can price a partial day: `start` and `end` are an inclusive start and an exclusive end, and a timestamp with a time of day is a real intraday window. It cannot price "every morning" in one call. The command quotes each weekday window with its own `metadata.get_cost` and prints the sum. One call from the first morning to the last afternoon would include the nights, and that number is not the sessions-only price.
+
+```bash
+python -m topstepbot fetch-databento --symbol MES.v.0 --schema tbbo --quote-only --start 2026-07-12 --end 2026-10-13 --sessions-only
+python -m topstepbot fetch-databento --symbol MES.v.0 --schema tbbo --quote-only --start 2026-07-12 --end 2026-10-13
+python -m topstepbot fetch-databento --symbol MES.v.0 --schema tbbo --quote-only --start 2025-10-12 --end 2026-10-13 --sessions-only
+python -m topstepbot fetch-databento --symbol MES.v.0 --schema tbbo --quote-only --start 2025-10-12 --end 2026-10-13
+python -m topstepbot fetch-databento --symbol MES.v.0 --schema tbbo --quote-only --start 2019-05-01 --end 2026-10-01 --sessions-only
+python -m topstepbot fetch-databento --symbol MES.v.0 --schema tbbo --quote-only --start 2019-05-01 --end 2026-10-01
+```
+
+Those six lines price MES `tbbo` and do not download. The pairs are last 3 months, last 12 months, and May 2019 through September 2026. In each pair the first line is weekday 08:00–11:00 CT and the second is the full clock. `--end` is exclusive. `--sessions-only rth` is the same quote with each weekday cut to 08:30–15:00 CT instead. A morning quote from 2019 through 2026 is one free metadata call per weekday. It does not spend credit.
+
 `--symbol` defaults to `MES.v.0`. `MNQ.v.0` is the same download for Micro Nasdaq. The contract column is still the outright plus the instrument id (`MNQH4:12345`), and a change in that column is still a roll. Dataset `GLBX.MDP3`, schema `ohlcv-1m`, continuous symbology. The `v` rule is the front month by the previous day's volume. `MES.c.0` follows the calendar expiry and can stay on a quiet month after the volume has moved, so it is not used. `MES.n.0` would rank by open interest. Prices are the original outright prints. Databento does not back-adjust them, so a roll is a real gap. An instrument id is only unique within one day, which is why both are stored. A continuous symbol can only be resolved to an instrument id; the outright name comes from a free symbology lookup.
 
 If the command stops, run it again with the same `--out`. Bars already in the file are kept, and the next cost quote is only for the remaining span. The file is large. It is gitignored. Do not commit it.
@@ -375,6 +390,7 @@ If a bracket is rejected because the account is in Position Brackets mode, the d
 | `data/sample_mes_1m_synthetic.csv` | Fake bars so the backtest runs immediately |
 | `data/mes_1m_real.csv` | Created on the Mac by `fetch-history`. Gitignored |
 | `data/mes_1m_databento.csv` | Created on the Mac by `fetch-databento`. Gitignored |
+| `data/mes_tbbo/` and other tick directories | Per-day Parquet or gzipped CSV from `--schema trades`, `tbbo`, or `mbp-1`. Gitignored |
 | `tests/` | Unit tests |
 
 ```bash
